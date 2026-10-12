@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { CloseIcon, PauseIcon, PlayIcon, RestartIcon } from './Icons'
 import { WrapupCard } from './WrapupCard'
+import { SwapCard } from './SwapCard'
 import { formatClock, isActive, remainingNow } from '../state/timers'
 import { primeAudio } from '../state/timerPing'
-import { setCurrentStep, timerRemove, timerRestart, timerStart, timerToggle } from '../state/actions'
+import { swapsForStep } from '../state/cook'
+import { INGREDIENTS_KEY, setCurrentStep, timerRemove, timerRestart, timerStart, timerToggle } from '../state/actions'
 import { activeChat, setState, useAppState } from '../state/store'
 import type { Timer } from '../storage/chats'
 
@@ -22,13 +24,18 @@ export function CookMode() {
   const plan = chat.ui.cookPlan
   const pagerRef = useRef<HTMLDivElement>(null)
   const steps = plan?.steps ?? []
-  const pages = steps.length + 1 // last page is the wrap-up
-  const currentIndex = Math.max(0, chat.ui.currentStepKey === '__wrapup' ? steps.length : steps.findIndex((st) => st.key === chat.ui.currentStepKey))
+  const swapsDone = chat.ui.swapsDone ?? []
+  // Pages: ingredients, then one per step, then the wrap-up.
+  const pages = steps.length + 2
+  const wrapIndex = steps.length + 1
+  const key = chat.ui.currentStepKey
+  const stepIdx = steps.findIndex((st) => st.key === key)
+  const currentIndex = key === '__wrapup' ? wrapIndex : stepIdx >= 0 ? stepIdx + 1 : 0
   useClock(chat.ui.timers.some((t) => isActive(t)))
   const touching = useRef(false)
   const scrollTimer = useRef(0)
 
-  // Keep the pager on the current step (also after an in-place plan update).
+  // Keep the pager on the current page (also after an in-place plan update).
   useEffect(() => {
     const el = pagerRef.current
     if (!el) return
@@ -45,7 +52,7 @@ export function CookMode() {
 
   const go = (i: number) => {
     const idx = Math.max(0, Math.min(pages - 1, i))
-    setCurrentStep(idx === steps.length ? '__wrapup' : steps[idx].key)
+    setCurrentStep(idx === 0 ? INGREDIENTS_KEY : idx === wrapIndex ? '__wrapup' : steps[idx - 1].key)
   }
   // Only settle on a page once the finger is up, so we never scroll under a drag.
   const onScrollEnd = () => {
@@ -58,12 +65,13 @@ export function CookMode() {
     window.clearTimeout(scrollTimer.current)
     scrollTimer.current = window.setTimeout(onScrollEnd, 120)
   }
-  const goToStep = (key: string) => {
-    const i = steps.findIndex((st) => st.key === key)
-    if (i >= 0) go(i)
+  const goToStep = (stepKey: string) => {
+    const i = steps.findIndex((st) => st.key === stepKey)
+    if (i >= 0) go(i + 1)
   }
-  const timerFor = (key: string): Timer | undefined => chat.ui.timers.find((t) => t.stepKey === key)
-  const stepTitle = (key: string) => steps.find((st) => st.key === key)?.title ?? key
+  const timerFor = (stepKey: string): Timer | undefined => chat.ui.timers.find((t) => t.stepKey === stepKey)
+  const stepTitle = (stepKey: string) => steps.find((st) => st.key === stepKey)?.title ?? stepKey
+  const nextLabel = currentIndex === 0 ? 'Start cooking' : currentIndex === steps.length ? 'Finish' : 'Next'
 
   return (
     <div className="cook" data-testid="cook">
@@ -92,9 +100,20 @@ export function CookMode() {
         onTouchEnd={() => { touching.current = false; scheduleScrollEnd() }}
         onTouchCancel={() => { touching.current = false; scheduleScrollEnd() }}
       >
+        <div className="step" data-testid="ingredients-page">
+          <div className="n">Before you start</div>
+          <h2>Get your ingredients</h2>
+          <ul className="ingredients">
+            {plan.ingredients.map((ing, i) => (
+              <li key={i}><span>{ing.name}</span><span className="qty">{ing.quantity}</span></li>
+            ))}
+          </ul>
+          {(plan.swaps ?? []).map((sw) => <SwapCard key={sw.id} swap={sw} done={swapsDone.includes(sw.id)} mode="shop" />)}
+        </div>
         {steps.map((st, i) => {
           const t = timerFor(st.key)
           const rem = t ? remainingNow(t) : 0
+          const swaps = swapsForStep(plan, st.key)
           return (
             <div key={st.key} className="step" data-testid={`step-${st.key}`}>
               <div className="n">Step {i + 1} of {steps.length}</div>
@@ -116,17 +135,18 @@ export function CookMode() {
                   </button>
                 )
               )}
+              {swaps.map((sw) => <SwapCard key={sw.id} swap={sw} done={swapsDone.includes(sw.id)} mode="step" />)}
               {st.tip && <div className="tip">{st.tip}</div>}
             </div>
           )
         })}
-        <div className="step" style={{ padding: 0 }}>{currentIndex === steps.length ? <WrapupCard /> : <div className="center">Finish to see your wrap-up</div>}</div>
+        <div className="step" style={{ padding: 0 }}>{currentIndex === wrapIndex ? <WrapupCard /> : <div className="center">Finish to see your wrap-up</div>}</div>
       </div>
       <div className="cook-nav">
         <button className="btn" onClick={() => go(currentIndex - 1)} disabled={currentIndex === 0} data-testid="prev">Back</button>
-        {currentIndex < steps.length && (
-          <button className={`btn ${currentIndex === steps.length - 1 ? 'green' : 'primary'}`} onClick={() => go(currentIndex + 1)} data-testid="next">
-            {currentIndex === steps.length - 1 ? 'Finish' : 'Next'}
+        {currentIndex < wrapIndex && (
+          <button className={`btn ${currentIndex === steps.length ? 'green' : 'primary'}`} onClick={() => go(currentIndex + 1)} data-testid="next">
+            {nextLabel}
           </button>
         )}
       </div>

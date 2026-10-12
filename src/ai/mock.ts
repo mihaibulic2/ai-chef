@@ -115,6 +115,9 @@ export const MOCK_PLAN: CookPlan = {
     { key: 'spinach', title: 'Wilt the spinach', instruction: 'Stir in 3 handfuls of spinach until wilted, about a minute.', durationMin: null, tip: null },
     { key: 'toss', title: 'Toss and serve', instruction: 'Add the drained pasta, a splash of pasta water, and 2 tbsp parmesan. Toss and serve.', durationMin: null, tip: null },
   ],
+  swaps: [
+    { id: 's1', title: 'Whole wheat spaghetti', change: 'Use 200 g whole wheat spaghetti instead of regular. Cook 1 minute longer.', stepKey: 'cook-pasta', payoff: 'about 6 g more fiber per serving' },
+  ],
 }
 
 export const MOCK_WRAPUP: Wrapup = {
@@ -155,7 +158,12 @@ export class MockAiClient implements AiClient {
     }
 
     await wait(600)
-    if (lower.includes('cook this') || lower.includes("let's make") || lower.includes('lets make') || lower.includes('show_cooking')) {
+    if (lower.startsWith('[action]')) {
+      await callTool('set_mood', { positivity: 0.95 }, '')
+      const text = 'Nice.'
+      await say(text)
+      appended.push({ role: 'assistant', content: [{ type: 'text', text }] })
+    } else if (lower.includes('cook this') || lower.includes("let's make") || lower.includes('lets make') || lower.includes('show_cooking')) {
       await callTool('set_mood', { positivity: 0.95 }, '')
       await callTool('show_cooking', MOCK_PLAN, 'Great pick. Here we go, step by step.')
     } else if (history.length <= 1 || lower.includes('pasta') || lower.includes('idea')) {

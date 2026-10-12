@@ -47,12 +47,24 @@ export interface CookStep {
   tip: string | null
 }
 
+export interface Swap {
+  id: string
+  title: string
+  /** What to buy or change, with quantities. */
+  change: string
+  /** Step this applies to, or null when it is only a shopping change. */
+  stepKey: string | null
+  /** One-line payoff, e.g. "about 180 fewer kcal per serving". */
+  payoff: string
+}
+
 export interface CookPlan {
   recipeId: string
   title: string
   servings: number
   ingredients: Ingredient[]
   steps: CookStep[]
+  swaps: Swap[]
 }
 
 export interface Wrapup {

@@ -151,9 +151,9 @@ export function ChatView() {
             {chat.ui.messages.map((m) => (
               m.recipeIds ? (
                 <RecipeCarousel key={m.id} chat={chat} recipeIds={m.recipeIds} />
-              ) : m.kind === 'selection' ? (
+              ) : m.kind === 'selection' || m.kind === 'swap' ? (
                 <div key={m.id} className={`bubble user selection rise${m.tone === 'good' ? ' good' : ''}`} data-role="user">
-                  <span className="eyebrow">{m.tone === 'good' ? 'Selection · healthiest pick 🎉' : 'Selection'}</span>
+                  <span className="eyebrow">{m.kind === 'swap' ? 'Healthier swap 🎉' : m.tone === 'good' ? 'Selection · healthiest pick 🎉' : 'Selection'}</span>
                   <span className="sel-title">{m.text}</span>
                 </div>
               ) : (

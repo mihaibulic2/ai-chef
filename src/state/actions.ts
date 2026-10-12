@@ -68,7 +68,7 @@ export function celebrate(text: string): void {
 export interface SendOpts {
   visibleText?: string
   /** Rendered as a "Selection" card instead of a plain bubble. */
-  kind?: 'selection'
+  kind?: 'selection' | 'swap'
   tone?: 'good' | 'neutral'
 }
 
@@ -190,7 +190,7 @@ function handleTool(chatId: string, name: string, input: unknown): string {
       updateChat(chatId, (c) => {
         const isUpdate = c.ui.cookPlan?.recipeId === plan.recipeId
         const current = c.ui.currentStepKey
-        const keepKey = isUpdate && current && (current === '__wrapup' || plan.steps.some((s) => s.key === current)) ? current : plan.steps[0]?.key
+        const keepKey = isUpdate && current && (current === '__wrapup' || current === INGREDIENTS_KEY || plan.steps.some((s) => s.key === current)) ? current : INGREDIENTS_KEY
         return {
           ...c,
           ui: {
@@ -199,6 +199,7 @@ function handleTool(chatId: string, name: string, input: unknown): string {
             currentStepKey: keepKey,
             timers: isUpdate ? c.ui.timers.filter((t) => plan.steps.some((s) => s.key === t.stepKey)) : [],
             wrapup: isUpdate ? c.ui.wrapup : undefined,
+            swapsDone: isUpdate ? (c.ui.swapsDone ?? []).filter((id) => (plan.swaps ?? []).some((sw) => sw.id === id)) : [],
           },
         }
       })
@@ -270,6 +271,22 @@ export function cookRecipe(recipeId: string, opts: { healthiest?: boolean } = {}
     visibleText: r.title,
     kind: 'selection',
     tone: opts.healthiest ? 'good' : 'neutral',
+  })
+}
+
+export const INGREDIENTS_KEY = '__ingredients'
+
+/** The user applied a healthier swap: remember it, celebrate, nudge the mood, and tell the chat without leaving cook mode. */
+export function applySwap(swapId: string): Promise<void> {
+  const chat = activeChat()
+  const swap = chat.ui.cookPlan?.swaps?.find((sw) => sw.id === swapId)
+  if (!swap || (chat.ui.swapsDone ?? []).includes(swapId)) return Promise.resolve()
+  updateChat(chat.id, (c) => ({ ...c, ui: { ...c.ui, swapsDone: [...(c.ui.swapsDone ?? []), swapId], mood: Math.min(1, c.ui.mood + 0.25) } }))
+  celebrate('Healthier swap. Nice.')
+  return sendUserMessage(`[Action] I made a healthier swap: ${swap.title}. ${swap.change}`, {
+    visibleText: `Swapped: ${swap.title}`,
+    kind: 'swap',
+    tone: 'good',
   })
 }
 

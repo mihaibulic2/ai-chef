@@ -166,6 +166,19 @@ textarea, input { font: inherit; color: inherit; }
 .timer-pill.done { border-color: var(--green); color: var(--green); }
 .timer-pill .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* Ingredients and swaps */
+.ingredients { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; }
+.ingredients li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 17px; }
+.ingredients .qty { color: var(--muted); text-align: right; white-space: nowrap; }
+.swap { margin-top: 16px; padding: 14px; display: flex; flex-direction: column; gap: 6px; border-color: rgba(126, 217, 87, 0.35); background: var(--green-soft); }
+.swap .eyebrow { font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--green); }
+.swap .swap-title { font-weight: 800; font-size: 17px; }
+.swap .swap-change { font-size: 15px; }
+.swap .swap-payoff { color: var(--muted); font-size: 14px; }
+.swap .btn { align-self: flex-start; margin-top: 6px; }
+.swap.done { background: var(--card); border-color: var(--line); }
+.swap.done .eyebrow { color: var(--green); }
+
 /* Wrap-up */
 .wrap { flex: 1; overflow-y: auto; padding: 10px 20px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; }
 .wrap .glow { width: 150px; height: 150px; border-radius: 50%; margin: 10px 0 18px; position: relative; display: grid; place-items: center; }

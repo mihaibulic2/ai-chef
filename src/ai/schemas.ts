@@ -34,12 +34,21 @@ export const cookStepSchema = obj({
   tip: nullable(str),
 })
 
+export const swapSchema = obj({
+  id: { ...str, description: 'Short id, e.g. "s1"' },
+  title: { ...str, description: 'At most 6 words, e.g. "Milk and cornstarch instead of cream"' },
+  change: { ...str, description: 'One or two sentences: exactly what to buy or do instead, with quantities' },
+  stepKey: { ...nullable(str), description: 'The step key where this swap is applied, or null if it only changes shopping' },
+  payoff: { ...str, description: 'One short line on the benefit, e.g. "about 180 fewer kcal per serving"' },
+})
+
 export const cookPlanSchema = obj({
   recipeId: { ...str, description: 'The id of the recipe from show_recipes when it came from there. Keep the same value when re-sending an updated plan.' },
   title: str,
   servings: num,
   ingredients: arr(ingredientSchema),
   steps: arr(cookStepSchema),
+  swaps: { ...arr(swapSchema), description: 'Zero to two optional healthier substitutions. Empty when the recipe is already a good fit.' },
 })
 
 export const chatTools: Anthropic.Tool[] = [

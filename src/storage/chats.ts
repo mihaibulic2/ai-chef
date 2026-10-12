@@ -18,7 +18,7 @@ export interface UiMessage {
   /** Set when this message carries a recipe carousel. */
   recipeIds?: string[]
   error?: boolean
-  kind?: 'selection'
+  kind?: 'selection' | 'swap'
   tone?: 'good' | 'neutral'
 }
 
@@ -32,6 +32,8 @@ export interface ChatUi {
   cookPlan?: CookPlan
   currentStepKey?: string
   timers: Timer[]
+  /** Ids of swaps the user said they applied. */
+  swapsDone?: string[]
   wrapup?: Wrapup
 }
 
