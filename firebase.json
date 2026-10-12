@@ -1,0 +1,8 @@
+{
+  "hosting": {
+    "site": "oleg-demo",
+    "public": "dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "cleanUrls": true
+  }
+}
