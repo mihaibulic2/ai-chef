@@ -14,6 +14,8 @@ export interface Recipe {
   ingredients: Ingredient[]
   missing: string[]
   tags: string[]
+  /** Same scale as set_mood: how the assistant would feel if the user picked this one (0.2 to 1). */
+  positivity: number
 }
 
 export interface NutritionPerServing {

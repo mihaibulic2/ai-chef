@@ -24,6 +24,7 @@ export const recipeSchema = obj({
   ingredients: arr(ingredientSchema),
   missing: { ...arr(str), description: 'Minor items the user does not have' },
   tags: { ...arr(str), description: 'Up to 3 short tags, e.g. "quick", "one-pan", "uses what you have"' },
+  positivity: { ...num, description: 'Same scale as set_mood (0.2 to 1): the mood you would set if the user picked this recipe. Highest for the option that best fits their health goals, around 0.4 for an indulgent one.' },
 })
 
 export const cookStepSchema = obj({

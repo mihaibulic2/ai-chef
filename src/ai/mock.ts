@@ -23,6 +23,7 @@ export const MOCK_RECIPES: Recipe[] = [
     ],
     missing: [],
     tags: ['quick', 'uses what you have'],
+    positivity: 0.95,
   },
   {
     id: 'r2',
@@ -40,6 +41,7 @@ export const MOCK_RECIPES: Recipe[] = [
     ],
     missing: [],
     tags: ['comfort', 'one-pan'],
+    positivity: 0.4,
   },
   {
     id: 'r3',
@@ -57,6 +59,7 @@ export const MOCK_RECIPES: Recipe[] = [
     ],
     missing: ['orzo'],
     tags: ['high protein', 'missing: orzo'],
+    positivity: 0.8,
   },
 ]
 

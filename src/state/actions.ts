@@ -266,6 +266,10 @@ export function cookRecipe(recipeId: string, opts: { healthiest?: boolean } = {}
   const r = chat.ui.recipesById[recipeId]
   if (!r) return Promise.resolve()
   setState({ view: 'chat' })
+  // Immediate feedback: the orb takes the recipe's positivity now, before the model replies.
+  const fromRecipe = Number.isFinite(r.positivity) ? r.positivity : (chat.ui.judgeById[r.id]?.healthScore ?? 50) / 100
+  const mood = Math.max(0.2, Math.min(1, opts.healthiest ? Math.max(fromRecipe, 0.9) : fromRecipe))
+  updateChat(chat.id, (c) => ({ ...c, ui: { ...c.ui, mood } }))
   if (opts.healthiest) celebrate('Healthiest pick. Nice.')
   const modelId = r.id.split('~')[0]
   return sendUserMessage(`[User tapped "Cook this" on "${r.title}" (id ${modelId}), ${r.servings} servings.] Please open the cooking steps with show_cooking.`, {
