@@ -28,7 +28,7 @@ src/__live__
 test-results
 playwright-report
 
-# local env (holds the private URL slug)
+# local env
 .env.local
 .env
 
