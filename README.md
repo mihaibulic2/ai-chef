@@ -8,15 +8,17 @@ key you paste in Settings.
 ## Run locally
 ```
 npm install
-npm run dev          # http://localhost:5173/<slug>/  (slug is `base` in vite.config.ts)
+cp .env.example .env.local   # then set VITE_APP_SLUG to a random value
+npm run dev                  # http://localhost:5173/<slug>/
 ```
+The slug is the only thing keeping the deployed URL private, so `.env.local` is gitignored.
 Add `?mock=1` to the URL to use canned AI answers (no key, no cost).
 
 ## Deploy
 ```
 npm run deploy       # builds and deploys to Firebase Hosting site "oleg-demo" in project "paced-breathing"
 ```
-The app lives at `https://oleg-demo.web.app/<slug>/`.
+The app lives at `https://oleg-demo.web.app/<slug>/`. The site root deliberately returns 404.
 
 ## Where things are
 - `src/ai/calls/<name>/prompt.md` and `config.json`: one folder per AI call (chat, judge, pantry_vision, wrapup).

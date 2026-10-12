@@ -27,3 +27,10 @@ dist-ssr
 src/__live__
 test-results
 playwright-report
+
+# local env (holds the private URL slug)
+.env.local
+.env
+
+# firebase deploy cache
+.firebase/
