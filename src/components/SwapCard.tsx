@@ -5,7 +5,7 @@ import { applySwap } from '../state/actions'
 export function SwapCard({ swap, done, mode }: { swap: Swap; done: boolean; mode: 'shop' | 'step' }) {
   return (
     <div className={`card swap${done ? ' done' : ''}`} data-testid={`swap-${swap.id}`}>
-      <div className="eyebrow">{done ? 'Swapped ✓' : 'Pro tip'}</div>
+      <div className="eyebrow">{done ? 'Health hack ✓' : 'Health hack'}</div>
       <div className="swap-title">{swap.title}</div>
       <div className="swap-change">{swap.change}</div>
       <div className="swap-payoff">{swap.payoff}</div>
