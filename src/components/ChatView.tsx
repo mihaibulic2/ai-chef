@@ -3,10 +3,17 @@ import { Orb, type OrbState } from './Orb'
 import { GearIcon, PlusIcon, SendIcon } from './Icons'
 import { RecipeCarousel } from './RecipeCarousel'
 import { Recognizer, speechSupported, type RecognizerResult } from '../speech/recognizer'
-import { LevelMeter } from '../speech/level'
+import { LevelMeter, levelMeterSupported } from '../speech/level'
 import { busy, judgeMissing, sendUserMessage, startNewChat } from '../state/actions'
 import { activeChat, setState, useAppState } from '../state/store'
 import { useBusy } from './useBusy'
+
+const lerp = (a: number, b: number, t: number) => Math.round(a + (b - a) * t)
+/** Chip colour for the thinking state follows the orb's mood: amber (neutral) to green (positive). */
+function moodColor(mood: number): string {
+  const t = Math.max(0, Math.min(1, (mood - 0.3) / 0.7))
+  return `rgb(${lerp(240, 126, t)}, ${lerp(165, 217, t)}, ${lerp(58, 87, t)})`
+}
 
 export function ChatView() {
   const s = useAppState()
@@ -15,6 +22,8 @@ export function ChatView() {
   const [listening, setListening] = useState(false)
   const [transcript, setTranscript] = useState('')
   const [text, setText] = useState('')
+  const [scrolled, setScrolled] = useState(false)
+  const [awayFromBottom, setAwayFromBottom] = useState(false)
   const recRef = useRef<Recognizer | null>(null)
   const meterRef = useRef<LevelMeter | null>(null)
   // Monotonic token: a meter that resolves after its session ended is stopped immediately.
@@ -23,11 +32,30 @@ export function ChatView() {
   const levelRef = useRef(0)
   const pulseTimer = useRef(0)
   const listRef = useRef<HTMLDivElement>(null)
+  const stickToBottom = useRef(true)
 
   useEffect(() => { judgeMissing() }, [chat.id])
+
+  const scrollToBottom = useCallback((smooth = true) => {
+    const el = listRef.current
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
+  }, [])
+
+  // Follow new content only while the user is already at the bottom.
+  const lastText = chat.ui.messages[chat.ui.messages.length - 1]?.text
   useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
-  }, [chat.ui.messages.length, chat.ui.messages[chat.ui.messages.length - 1]?.text])
+    if (stickToBottom.current) scrollToBottom(false)
+  }, [chat.ui.messages.length, lastText, transcript, listening, scrollToBottom])
+  useEffect(() => { scrollToBottom(false) }, [chat.id, scrollToBottom])
+
+  const onScroll = () => {
+    const el = listRef.current
+    if (!el) return
+    const gap = el.scrollHeight - el.clientHeight - el.scrollTop
+    stickToBottom.current = gap < 40
+    setScrolled(el.scrollTop > 4)
+    setAwayFromBottom(gap > 160)
+  }
 
   const endSession = useCallback(() => {
     sessionRef.current++
@@ -43,9 +71,11 @@ export function ChatView() {
     endSession()
     if (result.error) {
       setTranscript(result.error)
-    } else {
+    } else if (result.text) {
       setTranscript('')
-      if (result.text) void sendUserMessage(result.text)
+      void sendUserMessage(result.text)
+    } else {
+      setTranscript("Didn't catch that. Tap and try again.")
     }
   }, [endSession])
 
@@ -57,12 +87,11 @@ export function ChatView() {
     const session = ++sessionRef.current
     setListening(true)
     setTranscript('')
-    // Create the meter synchronously inside the tap so the AudioContext is born in the gesture.
-    const meter = new LevelMeter()
+    stickToBottom.current = true
     const rec = new Recognizer({
       onInterim: (t) => {
         setTranscript(t)
-        // Fallback pulse when the mic meter is unavailable: a short bump per new result, then decay.
+        // Pulse per new result when there is no mic meter (Safari), then decay.
         if (!meterRef.current) {
           levelRef.current = 0.7
           window.clearTimeout(pulseTimer.current)
@@ -72,20 +101,17 @@ export function ChatView() {
       onFinal: finish,
     })
     recRef.current = rec
-    if (!rec.start()) {
-      meter.stop()
-      return
-    }
+    if (!rec.start()) return
+    if (!levelMeterSupported()) return
+    // Chrome only: a loudness meter for a smoother pulse. Created inside the tap so the AudioContext may run.
+    const meter = new LevelMeter()
     meter.start().then(() => {
       if (sessionRef.current !== session) {
         meter.stop()
         return
       }
       meterRef.current = meter
-    }).catch(() => {
-      // iOS may refuse a second mic consumer; the interim-text fallback keeps the orb alive.
-      meter.stop()
-    })
+    }).catch(() => meter.stop())
   }, [finish])
 
   const getLevel = useCallback(() => (meterRef.current ? meterRef.current.level() : levelRef.current), [])
@@ -98,49 +124,60 @@ export function ChatView() {
   // Leaving the screen mid-sentence drops the words instead of sending half a message.
   useEffect(() => () => { recRef.current?.abort(); endSession() }, [endSession])
 
+  const started = chat.ui.messages.length > 0
   const orbState: OrbState = listening ? 'listening' : busy.chatSending ? 'thinking' : 'idle'
-  const statusChip = listening ? (
-    <span className="chip pink"><span className="dot" />Listening</span>
+  const status = listening ? (
+    <span className="chip pink"><span className="dot" />Listening · tap to stop</span>
   ) : busy.chatSending ? (
-    <span className="chip amber"><span className="dot" />Thinking</span>
-  ) : chat.ui.messages.length === 0 ? (
-    <span className="chip">Tap the orb and say what you're in the mood for</span>
-  ) : (
+    <span className="chip" style={{ color: moodColor(chat.ui.mood), background: `${moodColor(chat.ui.mood)}22`, borderColor: 'transparent' }}><span className="dot" />Thinking</span>
+  ) : started ? (
     <span className="chip">Tap to talk</span>
+  ) : (
+    <p className="prompt-line">What are you thinking?</p>
   )
 
   return (
     <div className="screen">
-      <div className="header">
+      <div className={`header${scrolled ? ' scrolled' : ''}`}>
         <h1>Chef</h1>
         <div className="actions">
           <button className="icon-btn" aria-label="New chat" onClick={startNewChat}><PlusIcon /></button>
           <button className="icon-btn" aria-label="Settings" onClick={() => setState({ view: 'settings' })} data-testid="settings-btn"><GearIcon /></button>
         </div>
       </div>
-      <div className="chat-top">
-        <Orb state={orbState} getLevel={getLevel} mood={chat.ui.mood} onTap={onOrbTap} size={chat.ui.messages.length === 0 ? 240 : 150} />
-        <div className="status-chip" data-testid="status">{statusChip}</div>
-        {chat.ui.cookPlan && !listening && !busy.chatSending && (
-          <button className="chip amber" style={{ marginTop: 8 }} onClick={() => setState({ view: 'cook' })} data-testid="resume-cooking"><span className="dot" />Resume cooking · {chat.ui.cookPlan.title}</button>
-        )}
-        <p className="transcript" data-testid="transcript">{transcript}</p>
-      </div>
-      <div className="scroll" ref={listRef}>
-        <div className="messages" data-testid="messages">
-          {chat.ui.messages.map((m) => (
-            m.recipeIds ? (
-              <RecipeCarousel key={m.id} chat={chat} recipeIds={m.recipeIds} />
-            ) : (
-              <div key={m.id} className={`bubble ${m.role}${m.error ? ' error' : ''}`} data-role={m.role}>
-                {m.text}
-                {m.error && /API key/i.test(m.text) && <> <button onClick={() => setState({ view: 'settings' })}>Open Settings</button></>}
-              </div>
-            )
-          ))}
+      <div className="scroll chat-scroll" ref={listRef} onScroll={onScroll}>
+        <div className={`chat-inner${started ? '' : ' empty'}`}>
+          <div className="messages" data-testid="messages">
+            {chat.ui.messages.map((m) => (
+              m.recipeIds ? (
+                <RecipeCarousel key={m.id} chat={chat} recipeIds={m.recipeIds} />
+              ) : m.kind === 'selection' ? (
+                <div key={m.id} className={`bubble user selection rise${m.tone === 'good' ? ' good' : ''}`} data-role="user">
+                  <span className="eyebrow">{m.tone === 'good' ? 'Selection · healthiest pick 🎉' : 'Selection'}</span>
+                  <span className="sel-title">{m.text}</span>
+                </div>
+              ) : (
+                <div key={m.id} className={`bubble ${m.role}${m.error ? ' error' : ''}${m.role === 'user' ? ' rise' : ''}`} data-role={m.role}>
+                  {m.text}
+                  {m.error && /API key/i.test(m.text) && <> <button onClick={() => setState({ view: 'settings' })}>Open Settings</button></>}
+                </div>
+              )
+            ))}
+          </div>
+          <div className="chat-top">
+            <Orb state={orbState} getLevel={getLevel} mood={chat.ui.mood} onTap={onOrbTap} size={started ? 150 : 240} />
+            <div className="status-chip" data-testid="status">{status}</div>
+            {chat.ui.cookPlan && !listening && !busy.chatSending && (
+              <button className="chip amber" style={{ marginTop: 8 }} onClick={() => setState({ view: 'cook' })} data-testid="resume-cooking"><span className="dot" />Resume cooking · {chat.ui.cookPlan.title}</button>
+            )}
+            <p className="transcript" data-testid="transcript">{transcript}</p>
+          </div>
         </div>
       </div>
-      <form className="composer" onSubmit={(e) => { e.preventDefault(); const t = text; setText(''); void sendUserMessage(t) }}>
+      {awayFromBottom && (
+        <button className="jump-bottom" onClick={() => scrollToBottom()} aria-label="Jump to latest">↓</button>
+      )}
+      <form className="composer" onSubmit={(e) => { e.preventDefault(); const t = text; setText(''); stickToBottom.current = true; void sendUserMessage(t) }}>
         <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Or type here…" disabled={busy.chatSending} data-testid="composer" />
         <button className="send" type="submit" disabled={!text.trim() || busy.chatSending} aria-label="Send" data-testid="send"><SendIcon /></button>
       </form>

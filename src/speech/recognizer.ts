@@ -15,8 +15,8 @@ export interface RecognizerHandlers {
 export const DONE_WORDS = ['done', "i'm done", 'im done', 'that is it', "that's it", 'thats it']
 /** Pause after speech that ends listening. */
 export const SILENCE_MS = 2200
-/** Time with no speech at all before giving up. */
-export const NO_SPEECH_MS = 8000
+/** Time with no speech at all before giving up (iOS can take several seconds to deliver the first result). */
+export const NO_SPEECH_MS = 15000
 
 /** If the transcript ends with a done-word, return the transcript without it; otherwise null. */
 export function stripDoneWord(text: string): string | null {
@@ -66,6 +66,9 @@ export function joinResults(results: SRResults): { final: string; interim: strin
   return { final, interim }
 }
 
+// iOS Safari misbehaves when a new recognition starts before the previous one has fully ended.
+let previousEnded: Promise<void> = Promise.resolve()
+
 export class Recognizer {
   private sr: SR | null = null
   private finalText = ''
@@ -86,6 +89,11 @@ export class Recognizer {
       return false
     }
     const sr = new C()
+    let markEnded: () => void = () => undefined
+    const endedPromise = new Promise<void>((r) => { markEnded = r })
+    const waitFor = previousEnded
+    previousEnded = endedPromise
+    this.markEnded = markEnded
     sr.continuous = true
     sr.interimResults = true
     sr.lang = 'en-US'
@@ -113,16 +121,23 @@ export class Recognizer {
     // iOS Safari ends recognition by itself after a pause; treat that as "done".
     sr.onend = () => this.finish(this.text())
     this.sr = sr
-    try {
-      sr.start()
-    } catch (err) {
-      this.sr = null
-      this.finish('', err instanceof Error ? `Could not start listening (${err.name}). Try again.` : 'Could not start listening.')
-      return false
-    }
-    this.armSilence(NO_SPEECH_MS)
+    // Give the previous session up to a second to end, then start.
+    const timeout = new Promise<void>((r) => setTimeout(r, 1000))
+    Promise.race([waitFor, timeout]).then(() => {
+      if (this.finished) return
+      try {
+        sr.start()
+      } catch (err) {
+        this.sr = null
+        this.finish('', err instanceof Error ? `Could not start listening (${err.name}). Try again.` : 'Could not start listening.')
+        return
+      }
+      this.armSilence(NO_SPEECH_MS)
+    })
     return true
   }
+
+  private markEnded: () => void = () => undefined
 
   private text(): string {
     return (this.finalText + ' ' + this.interimText).trim()
@@ -142,22 +157,28 @@ export class Recognizer {
   abort(): void {
     if (this.finished) return
     this.finished = true
-    this.teardown()
+    this.teardown(true)
   }
 
-  private teardown(): void {
+  private teardown(hard = false): void {
     if (this.silenceTimer) window.clearTimeout(this.silenceTimer)
     const sr = this.sr
     this.sr = null
     if (sr) {
       sr.onresult = null
-      sr.onend = null
       sr.onerror = null
+      // Resolve "ended" when the engine really ends, so the next start does not race it.
+      const done = this.markEnded
+      sr.onend = () => done()
+      window.setTimeout(done, 1500)
       try {
-        sr.abort()
+        if (hard) sr.abort()
+        else sr.stop()
       } catch {
-        // already stopped
+        done()
       }
+    } else {
+      this.markEnded()
     }
   }
 

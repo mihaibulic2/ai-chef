@@ -1,6 +1,11 @@
 // Microphone loudness meter for the orb. Independent of speech recognition; may be refused on iOS when
 // recognition already holds the mic, in which case start() rejects and the caller falls back.
 
+/** Safari (iPhone) cannot share the mic between recognition and getUserMedia; only use the meter on browsers with the unprefixed API. */
+export function levelMeterSupported(): boolean {
+  return 'SpeechRecognition' in window && !!navigator.mediaDevices?.getUserMedia
+}
+
 export class LevelMeter {
   private ctx: AudioContext | null = null
   private stream: MediaStream | null = null

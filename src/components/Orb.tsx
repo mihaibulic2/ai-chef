@@ -23,6 +23,8 @@ const WARM: [number, number, number][] = [[240, 165, 58], [255, 90, 90], [255, 2
 const GREEN: [number, number, number][] = [[126, 217, 87], [60, 200, 150], [210, 255, 180], [150, 230, 90]]
 const RING_WARM: [number, number, number] = [240, 165, 58]
 const RING_GREEN: [number, number, number] = [126, 217, 87]
+/** The canvas is larger than the orb so the outer glow and particles are never clipped. */
+const OVERSCAN = 1.5
 
 interface Sim { particles: Particle[]; blobs: { seed: number; rad: number }[]; t: number; smoothLevel: number; smoothMood: number; spin: number }
 
@@ -58,8 +60,9 @@ export function Orb({ state, getLevel, mood, onTap, size = 240 }: Props) {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     const dpr = Math.min(2, window.devicePixelRatio || 1)
-    canvas.width = size * dpr
-    canvas.height = size * dpr
+    const box = size * OVERSCAN
+    canvas.width = box * dpr
+    canvas.height = box * dpr
     ctx.scale(dpr, dpr)
 
     const sim = simRef.current!
@@ -85,21 +88,21 @@ export function Orb({ state, getLevel, mood, onTap, size = 240 }: Props) {
       const smoothMood = sim.smoothMood
       breathe = 0.5 + 0.5 * Math.sin(t * 1.1)
 
-      const cx = size / 2
-      const cy = size / 2
+      const cx = box / 2
+      const cy = box / 2
       const R = size * 0.36
       const scale = 1 + breathe * 0.02 + smoothLevel * 0.16
       const ringC = mix(RING_WARM, RING_GREEN, smoothMood)
       const palette = WARM.map((c, i) => mix(c, GREEN[i], smoothMood))
 
-      ctx.clearRect(0, 0, size, size)
+      ctx.clearRect(0, 0, box, box)
 
       // Outer soft glow
       const glow = ctx.createRadialGradient(cx, cy, R * 0.8, cx, cy, R * 1.6)
       glow.addColorStop(0, rgba(ringC, 0.14 + smoothLevel * 0.18))
       glow.addColorStop(1, rgba(ringC, 0))
       ctx.fillStyle = glow
-      ctx.fillRect(0, 0, size, size)
+      ctx.fillRect(0, 0, box, box)
 
       // Disc
       ctx.save()
@@ -194,7 +197,7 @@ export function Orb({ state, getLevel, mood, onTap, size = 240 }: Props) {
 
   return (
     <div className="orb-wrap" data-state={state} data-mood={mood.toFixed(2)} style={{ height: size }}>
-      <canvas ref={canvasRef} className="orb-canvas" style={{ width: size, height: size }} />
+      <canvas ref={canvasRef} className="orb-canvas" style={{ width: size * OVERSCAN, height: size * OVERSCAN, margin: -(size * (OVERSCAN - 1)) / 2 }} />
       <button className="orb-tap" style={{ width: size, height: size }} aria-label={state === 'listening' ? 'Stop listening' : 'Tap to talk'} onClick={onTap} />
     </div>
   )

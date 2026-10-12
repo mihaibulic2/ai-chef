@@ -122,7 +122,7 @@ test.describe('cooking', () => {
     await expect(page.getByTestId('grid')).toBeVisible()
     await page.getByTestId('cook-r1').click()
 
-    await expect(page.getByText('Healthiest pick')).toBeVisible()
+    await expect(page.getByRole('status')).toContainText('Healthiest pick')
     await expect(page.getByTestId('cook')).toHaveCount(0)
     const cook = page.getByTestId('cook')
     await expect(cook).toBeVisible({ timeout: 5000 })

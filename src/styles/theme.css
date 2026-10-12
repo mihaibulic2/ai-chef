@@ -42,7 +42,8 @@ textarea, input { font: inherit; color: inherit; }
 .scroll { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
 /* Header */
-.header { display: flex; align-items: center; justify-content: space-between; padding: calc(var(--safe-top) + 14px) 20px 6px; }
+.header { display: flex; align-items: center; justify-content: space-between; padding: calc(var(--safe-top) + 14px) 20px 10px; border-bottom: 1px solid transparent; transition: border-color 0.2s; }
+.header.scrolled { border-bottom-color: var(--line); }
 .header h1 { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
 .header .actions { display: flex; gap: 8px; }
 .icon-btn { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--card-2); border: 1px solid var(--line); color: var(--text); }
@@ -51,7 +52,7 @@ textarea, input { font: inherit; color: inherit; }
 
 /* Cards and chips */
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
-.chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; background: var(--card-2); color: var(--muted); border: 1px solid var(--line); }
+.chip { display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; background: var(--card-2); color: var(--muted); border: 1px solid var(--line); }
 .chip.amber { background: var(--amber-soft); color: var(--amber); border-color: transparent; }
 .chip.green { background: var(--green-soft); color: var(--green); border-color: transparent; }
 .chip.pink { background: var(--pink-soft); color: var(--pink); border-color: transparent; }
@@ -59,6 +60,7 @@ textarea, input { font: inherit; color: inherit; }
 .tag { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--card-2); color: var(--muted); border: 1px solid var(--line); white-space: nowrap; }
 .tag.good { color: var(--green); background: var(--green-soft); border-color: transparent; }
 .tag.bad { color: var(--pink); background: var(--pink-soft); border-color: transparent; }
+.tag.placeholder { height: 20px; background: rgba(160, 160, 170, 0.18); border-color: transparent; animation: pulse 1.2s ease-in-out infinite; }
 
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 20px; border-radius: 999px; font-weight: 700; font-size: 16px; background: var(--card-2); border: 1px solid var(--line); color: var(--text); }
 .btn.primary { background: var(--pink); color: #fff; border-color: transparent; box-shadow: 0 8px 24px rgba(255, 45, 122, 0.35); }
@@ -73,13 +75,23 @@ textarea, input { font: inherit; color: inherit; }
 .muted { color: var(--muted); }
 .dim { color: var(--dim); }
 
-/* Chat */
-.chat-top { display: flex; flex-direction: column; align-items: center; padding: 0 20px; }
-.orb-wrap { position: relative; width: 100%; display: grid; place-items: center; transition: height 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); }
-.orb-canvas { width: 240px; height: 240px; display: block; }
-.orb-tap { position: absolute; inset: 0; margin: auto; width: 240px; height: 240px; border-radius: 50%; }
-.status-chip { margin-top: -2px; min-height: 28px; }
+/* Chat: messages scroll above the orb, which is always the last item in the list. */
+.chat-scroll { overflow-x: hidden; }
+.chat-inner { min-height: 100%; display: flex; flex-direction: column; justify-content: flex-end; }
+.chat-inner.empty { justify-content: center; }
+.chat-top { display: flex; flex-direction: column; align-items: center; padding: 8px 20px 12px; position: relative; z-index: 2; }
+.orb-wrap { position: relative; width: 100%; display: grid; place-items: center; transition: height 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); overflow: visible; }
+.orb-canvas { display: block; pointer-events: none; }
+.orb-tap { position: absolute; inset: 0; margin: auto; border-radius: 50%; }
+.status-chip { margin-top: 6px; min-height: 36px; display: flex; align-items: center; }
+.prompt-line { margin: 0; color: var(--muted); font-size: 17px; text-align: center; }
 .transcript { color: var(--muted); text-align: center; min-height: 22px; margin: 10px 0 0; font-size: 15px; padding: 0 12px; }
+.jump-bottom { position: absolute; right: 16px; bottom: calc(var(--safe-bottom) + 76px); width: 40px; height: 40px; border-radius: 50%; background: var(--card-2); border: 1px solid var(--line); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5); font-size: 18px; z-index: 5; }
+.bubble.selection { display: flex; flex-direction: column; gap: 2px; border-color: var(--line); }
+.bubble.selection .eyebrow { font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.bubble.selection .sel-title { font-weight: 700; }
+.bubble.selection.good { background: var(--green-soft); border-color: rgba(126, 217, 87, 0.35); }
+.bubble.selection.good .eyebrow { color: var(--green); }
 
 .messages { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 12px; }
 .bubble { max-width: 86%; padding: 11px 14px; border-radius: 18px; font-size: 16px; white-space: pre-wrap; word-wrap: break-word; }
@@ -126,8 +138,6 @@ textarea, input { font: inherit; color: inherit; }
 .dot.loading { background: rgba(160, 160, 170, 0.35); animation: pulse 1.2s ease-in-out infinite; }
 .dot.hidden { visibility: hidden; }
 @keyframes pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
-.grid-footer { position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 16px calc(var(--safe-bottom) + 12px); display: flex; gap: 8px; background: var(--bg); border-top: 1px solid var(--line); z-index: 4; }
-.grid-footer .btn { flex: 1; }
 .verdict-good { color: var(--green); }
 .verdict-bad { color: var(--pink); }
 .verdict-neutral { color: var(--muted); }
@@ -180,10 +190,11 @@ textarea, input { font: inherit; color: inherit; }
 
 /* Confetti */
 .confetti { position: fixed; inset: 0; pointer-events: none; z-index: 50; overflow: hidden; }
-.confetti i { position: absolute; top: -10px; width: 8px; height: 12px; border-radius: 2px; animation: fall 1.4s ease-in forwards; }
-@keyframes fall { to { transform: translateY(110vh) rotate(540deg); opacity: 0.2; } }
+.confetti i { position: absolute; border-radius: 2px; animation: fall 2.4s cubic-bezier(0.3, 0, 0.7, 1) forwards; }
+@keyframes fall { to { transform: translateY(130vh) rotate(720deg); opacity: 0.3; } }
 .toast { position: fixed; left: 50%; top: calc(var(--safe-top) + 70px); transform: translateX(-50%); z-index: 51; padding: 12px 18px; border-radius: 999px; background: var(--green); color: #0b0b0c; font-weight: 800; box-shadow: 0 10px 30px rgba(126, 217, 87, 0.35); animation: toast 2.2s ease both; white-space: nowrap; }
-@keyframes toast { 0% { opacity: 0; transform: translate(-50%, -10px) scale(0.9); } 12% { opacity: 1; transform: translate(-50%, 0) scale(1); } 85% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes toast { 0% { opacity: 0; transform: translate(-50%, -10px) scale(0.9); } 10% { opacity: 1; transform: translate(-50%, 0) scale(1); } 88% { opacity: 1; } 100% { opacity: 0; } }
+.toast { animation-duration: 2.8s; }
 
 /* Settings */
 .tabs { display: flex; gap: 6px; padding: 8px 16px; }

@@ -1,6 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
 import { BackIcon } from './Icons'
-import { Celebrate } from './Celebrate'
 import { dotStyle } from './dotColor'
 import type { Judgement, NutritionPerServing } from '../ai/types'
 import { cookRecipe, healthiestId, isJudging, judgeRecipe } from '../state/actions'
@@ -29,17 +27,12 @@ export function HealthGrid() {
   const s = useAppState()
   const chat = activeChat(s)
   useBusy()
-  const [celebrate, setCelebrate] = useState<string | null>(null)
   const ids = chat.ui.selectedIds.filter((id) => chat.ui.recipesById[id])
   const recipes = ids.map((id) => chat.ui.recipesById[id])
   const best = healthiestId(chat, ids)
   const concernNames = lines(s.settings.concernsText)
   const allergenNames = lines(s.settings.allergensText)
   const watchNames = lines(s.settings.watchlistText)
-
-  const cookTimer = useRef(0)
-  useEffect(() => () => window.clearTimeout(cookTimer.current), [])
-  const onCelebrateDone = useCallback(() => setCelebrate(null), [])
 
   const status = (id: string): { j?: Judgement; loading: boolean; failed: boolean } => ({ j: chat.ui.judgeById[id], loading: isJudging(chat.id, id), failed: !!chat.ui.judgeFailed[id] })
 
@@ -56,12 +49,7 @@ export function HealthGrid() {
     return list.find((x) => x.name.toLowerCase().trim() === n) ?? list.find((x) => { const xn = x.name.toLowerCase().trim(); return xn.includes(n) || n.includes(xn) })
   }
 
-  const onCook = (id: string) => {
-    if (id === best) {
-      setCelebrate(id)
-      cookTimer.current = window.setTimeout(() => void cookRecipe(id), 1200)
-    } else void cookRecipe(id)
-  }
+  const onCook = (id: string) => void cookRecipe(id, { healthiest: id === best })
 
   if (recipes.length === 0) {
     return (
@@ -74,7 +62,6 @@ export function HealthGrid() {
 
   return (
     <div className="screen" data-testid="grid">
-      {celebrate && <Celebrate text="Healthiest pick. Nice." onDone={onCelebrateDone} />}
       <div className="header">
         <button className="icon-btn" onClick={() => setState({ view: 'chat' })} aria-label="Back" data-testid="grid-back"><BackIcon /></button>
         <h1>Compare</h1>
@@ -95,6 +82,14 @@ export function HealthGrid() {
             </tr>
           </thead>
           <tbody>
+            <tr>
+              <td className="label" />
+              {recipes.map((r) => (
+                <td key={r.id} className="col">
+                  <button className={`btn small ${best === r.id ? 'green' : ''}`} onClick={() => onCook(r.id)} data-testid={`cook-${r.id}`}>Cook this</button>
+                </td>
+              ))}
+            </tr>
             <tr className="group"><td colSpan={recipes.length + 1}>Nutrition</td></tr>
             {NUTRITION_ROWS.map((row) => (
               <tr key={row.key}>
@@ -181,13 +176,6 @@ export function HealthGrid() {
             </tr>
           </tbody>
         </table>
-      </div>
-      <div className="grid-footer">
-        {recipes.map((r) => (
-          <button key={r.id} className={`btn ${best === r.id ? 'green' : ''}`} onClick={() => onCook(r.id)} data-testid={`cook-${r.id}`}>
-            Cook {recipes.length > 1 ? r.title.split(' ').slice(0, 2).join(' ') : 'this'}
-          </button>
-        ))}
       </div>
     </div>
   )

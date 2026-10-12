@@ -18,6 +18,8 @@ export interface UiMessage {
   /** Set when this message carries a recipe carousel. */
   recipeIds?: string[]
   error?: boolean
+  kind?: 'selection'
+  tone?: 'good' | 'neutral'
 }
 
 export interface ChatUi {

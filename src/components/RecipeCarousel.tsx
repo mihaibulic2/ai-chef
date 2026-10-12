@@ -13,6 +13,7 @@ export function RecipeCarousel({ chat, recipeIds }: { chat: Chat; recipeIds: str
       <div className="carousel">
         {recipes.map((r) => {
           const j = chat.ui.judgeById[r.id]
+          const judging = !j && !chat.ui.judgeFailed[r.id]
           const isSel = chat.ui.selectedIds.includes(r.id)
           const tags = [`${r.timeMin} min`, `${r.servings} servings`, ...r.tags, ...(j?.tags ?? []).slice(0, 3)]
           return (
@@ -23,9 +24,10 @@ export function RecipeCarousel({ chat, recipeIds }: { chat: Chat; recipeIds: str
               <div className="tags">
                 {tags.map((t, i) => <span key={i} className={`tag ${tagTone(t)}`}>{t}</span>)}
                 {r.missing.map((m, i) => <span key={`m${i}`} className="tag bad">missing: {m}</span>)}
+                {judging && [0, 1, 2].map((i) => <span key={`p${i}`} className="tag placeholder" style={{ width: 52 + i * 14 }} aria-label="loading" />)}
               </div>
               <div className="foot">
-                <button className="btn small" onClick={(e) => { e.stopPropagation(); void cookRecipe(r.id) }}>Cook this</button>
+                <button className="btn small" onClick={(e) => { e.stopPropagation(); void cookRecipe(r.id, { healthiest: best === r.id }) }}>Cook this</button>
                 <span className="check">{isSel && <CheckIcon />}</span>
               </div>
             </div>

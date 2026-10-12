@@ -32,6 +32,8 @@ export const busy = {
   judging: new Set<string>(),
   wrapup: false,
   wrapupError: null as string | null,
+  /** Non-null while the confetti overlay plays. */
+  celebration: null as { text: string; key: number } | null,
   listeners: new Set<() => void>(),
   notify() {
     this.listeners.forEach((l) => l())
@@ -54,7 +56,23 @@ export function errorMessage(err: unknown): UiMessage {
 // Sends are serialised: a message sent while a reply streams waits for it instead of being dropped.
 let inflight: Promise<void> = Promise.resolve()
 
-export function sendUserMessage(text: string, opts: { visibleText?: string } = {}): Promise<void> {
+export function celebrate(text: string): void {
+  busy.celebration = { text, key: Date.now() }
+  busy.notify()
+  window.setTimeout(() => {
+    busy.celebration = null
+    busy.notify()
+  }, 2800)
+}
+
+export interface SendOpts {
+  visibleText?: string
+  /** Rendered as a "Selection" card instead of a plain bubble. */
+  kind?: 'selection'
+  tone?: 'good' | 'neutral'
+}
+
+export function sendUserMessage(text: string, opts: SendOpts = {}): Promise<void> {
   const trimmed = text.trim()
   if (!trimmed) return Promise.resolve()
   const run = inflight.then(() => runTurn(trimmed, opts))
@@ -62,13 +80,13 @@ export function sendUserMessage(text: string, opts: { visibleText?: string } = {
   return run
 }
 
-async function runTurn(trimmed: string, opts: { visibleText?: string }): Promise<void> {
+async function runTurn(trimmed: string, opts: SendOpts): Promise<void> {
   const chat = activeChat()
   const chatId = chat.id
   busy.chatSending = true
   busy.notify()
 
-  pushUi(chatId, { id: uid(), role: 'user', text: opts.visibleText ?? trimmed })
+  pushUi(chatId, { id: uid(), role: 'user', text: opts.visibleText ?? trimmed, kind: opts.kind, tone: opts.tone })
   const userMsg: Anthropic.MessageParam = { role: 'user', content: trimmed }
   updateChat(chatId, (c) => ({
     ...c,
@@ -241,14 +259,17 @@ export function healthiestId(chat: Chat, ids: string[]): string | null {
   return valid.reduce((best, id) => (chat.ui.judgeById[id].healthScore > chat.ui.judgeById[best].healthScore ? id : best))
 }
 
-export function cookRecipe(recipeId: string): Promise<void> {
+export function cookRecipe(recipeId: string, opts: { healthiest?: boolean } = {}): Promise<void> {
   const chat = activeChat()
   const r = chat.ui.recipesById[recipeId]
   if (!r) return Promise.resolve()
   setState({ view: 'chat' })
+  if (opts.healthiest) celebrate('Healthiest pick. Nice.')
   const modelId = r.id.split('~')[0]
   return sendUserMessage(`[User tapped "Cook this" on "${r.title}" (id ${modelId}), ${r.servings} servings.] Please open the cooking steps with show_cooking.`, {
-    visibleText: `Let's make ${r.title}.`,
+    visibleText: r.title,
+    kind: 'selection',
+    tone: opts.healthiest ? 'good' : 'neutral',
   })
 }
 

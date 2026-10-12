@@ -101,7 +101,7 @@ export function SettingsView() {
             <label>Anthropic API key</label>
             <div className="row">
               <input className="grow" type="password" value={draft.apiKey} onChange={(e) => setDraft({ ...draft, apiKey: e.target.value })} placeholder="sk-ant-…" autoCapitalize="off" autoCorrect="off" data-testid="api-key" />
-              <button className="btn small" onClick={() => void runChecks()} disabled={!s.settings.apiKey && !isMockMode()}>Run checks</button>
+              <button className="btn small" onClick={() => { if (draft.apiKey !== s.settings.apiKey) { setState({ settings: draft }); resetClient() } void runChecks() }} disabled={!draft.apiKey.trim() && !isMockMode()}>Run checks</button>
             </div>
             {isMockMode() && <div className="help" style={{ marginTop: 6 }}>Mock mode: no key needed, canned answers.</div>}
             <div className="checks" style={{ marginTop: 8 }} data-testid="checks">
