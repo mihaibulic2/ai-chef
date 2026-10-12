@@ -60,10 +60,10 @@ test.describe('compare grid', () => {
     await askForPasta(page)
     const r1 = page.getByTestId('recipe-r1')
     const r2 = page.getByTestId('recipe-r2')
-    await expect(page.getByTestId('compare')).toHaveCount(0)
-    await r1.click()
+    // Cards start selected: Compare (3) is shown; deselect the third card.
+    await expect(page.getByTestId('compare')).toHaveText('Compare (3)')
+    await page.getByTestId('recipe-r3').click()
     await expect(r1).toHaveAttribute('aria-pressed', 'true')
-    await r2.click()
     await expect(r2).toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByTestId('recipe-r3')).not.toHaveAttribute('aria-pressed', 'true')
 
@@ -102,8 +102,8 @@ test.describe('compare grid', () => {
 
 async function openGridAndCookR1(page: Page) {
   await askForPasta(page)
-  await page.getByTestId('recipe-r1').click()
-  await page.getByTestId('recipe-r2').click()
+  // Cards start selected; deselect the third so two remain.
+  await page.getByTestId('recipe-r3').click()
   await page.getByTestId('compare').click()
   await expect(page.getByTestId('grid')).toBeVisible()
   // Wait for the judge so r1 is known to be the healthiest pick.
@@ -116,8 +116,8 @@ test.describe('cooking', () => {
     await fresh(page)
     await askForPasta(page)
     await expect(page.getByTestId('recipe-r1')).toContainText('Recommended', { timeout: 5000 })
-    await page.getByTestId('recipe-r1').click()
-    await page.getByTestId('recipe-r2').click()
+    // Cards start selected; deselect the third so two remain.
+    await page.getByTestId('recipe-r3').click()
     await page.getByTestId('compare').click()
     await expect(page.getByTestId('grid')).toBeVisible()
     await page.getByTestId('cook-r1').click()
@@ -145,10 +145,10 @@ test.describe('cooking', () => {
     // Walk to the last step and finish.
     const next = page.getByTestId('next')
     for (let i = 0; i < 20; i++) {
-      if ((await next.textContent())?.trim() === 'Finish') break
+      if ((await next.textContent())?.trim() === 'See how I did') break
       await next.click()
     }
-    await expect(next).toHaveText('Finish')
+    await expect(next).toHaveText('See how I did')
     await next.click()
     const wrap = page.getByTestId('wrapup')
     await expect(wrap).toBeVisible({ timeout: 10_000 })

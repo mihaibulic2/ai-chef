@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
+import { Orb } from './Orb'
 import type { Wrapup } from '../ai/types'
 import { busy, loadWrapup } from '../state/actions'
 import { activeChat, setState, useAppState } from '../state/store'
@@ -10,12 +11,14 @@ export function WrapupCard() {
   useBusy()
   useEffect(() => { void loadWrapup() }, [chat.id, chat.ui.cookPlan?.recipeId])
   const w: Wrapup | undefined = chat.ui.wrapup
+  const noop = useCallback(() => undefined, [])
+  const zero = useCallback(() => 0, [])
   if (!w) {
     const failed = !busy.wrapup && busy.wrapupError
     return (
       <div className="wrap" data-testid="wrapup-loading">
-        <div className="glow congrats pop"><div className="ring"><span className="spinner" style={{ width: 28, height: 28 }} /></div></div>
-        <p className="subline">{failed ? busy.wrapupError : 'Adding it up…'}</p>
+        <div className="pop"><Orb state={busy.wrapup ? 'thinking' : 'idle'} getLevel={zero} mood={chat.ui.mood} onTap={noop} size={170} /></div>
+        <p className="subline">{failed ? busy.wrapupError : 'Looking over your meal…'}</p>
         {failed && <button className="btn" onClick={() => void loadWrapup()}>Try again</button>}
       </div>
     )
@@ -23,7 +26,7 @@ export function WrapupCard() {
   const good = w.verdict === 'congrats'
   return (
     <div className="wrap" data-testid="wrapup">
-      <div className={`glow ${w.verdict} pop`}><div className="ring">{good ? '✓' : '↗'}</div></div>
+      <div className="pop"><Orb state="idle" getLevel={zero} mood={good ? 1 : 0.45} onTap={noop} size={170} /></div>
       <h2 className="headline rise" style={{ animationDelay: '0.1s' }}>{w.headline}</h2>
       <p className="subline rise" style={{ animationDelay: '0.2s' }}>{w.streak}</p>
       <div className="highlights">

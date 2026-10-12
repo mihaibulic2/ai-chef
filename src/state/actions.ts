@@ -172,7 +172,8 @@ function handleTool(chatId: string, name: string, input: unknown): string {
           ui: {
             ...c.ui,
             recipesById: { ...c.ui.recipesById, ...byId },
-            selectedIds: [],
+            // All new cards start selected so Compare is obvious; tapping a card deselects it.
+            selectedIds: recipes.map((r) => r.id),
             messages: [...c.ui.messages, { id: uid(), role: 'assistant', text: '', recipeIds: recipes.map((r) => r.id) }],
           },
         }

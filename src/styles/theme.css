@@ -157,8 +157,11 @@ textarea, input { font: inherit; color: inherit; }
 .timer-box .clock { font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .timer-box .ctl { margin-left: auto; display: flex; gap: 6px; }
 .timer-box.done { border-color: var(--green); background: var(--green-soft); }
-.cook-nav { display: flex; gap: 10px; padding: 8px 16px calc(var(--safe-bottom) + 12px); }
+.cook-nav { display: flex; gap: 10px; padding: 8px 16px calc(var(--safe-bottom) + 12px); align-items: center; }
 .cook-nav .btn { flex: 1; }
+.mini-orb { flex: 0 0 56px; height: 56px; display: grid; place-items: center; }
+.mini-orb .orb-wrap { width: 56px; }
+.cook-transcript { margin: 0; padding: 4px 20px; color: var(--muted); font-size: 14px; text-align: center; min-height: 20px; }
 .timer-banner { display: flex; gap: 8px; overflow-x: auto; padding: 6px 16px; scrollbar-width: none; }
 .timer-banner::-webkit-scrollbar { display: none; }
 .timer-pill { flex: 0 0 calc(50% - 4px); display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; background: var(--card-2); border: 1px solid var(--line); font-size: 14px; }

@@ -1,11 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { CloseIcon, PauseIcon, PlayIcon, RestartIcon } from './Icons'
+import { Orb } from './Orb'
+import { useVoice } from './useVoice'
+import { useBusy } from './useBusy'
 import { WrapupCard } from './WrapupCard'
 import { SwapCard } from './SwapCard'
 import { formatClock, isActive, remainingNow } from '../state/timers'
 import { primeAudio } from '../state/timerPing'
 import { swapsForStep } from '../state/cook'
-import { INGREDIENTS_KEY, setCurrentStep, timerRemove, timerRestart, timerStart, timerToggle } from '../state/actions'
+import { INGREDIENTS_KEY, busy, sendUserMessage, setCurrentStep, timerRemove, timerRestart, timerStart, timerToggle } from '../state/actions'
+import { getState } from '../state/store'
 import { activeChat, setState, useAppState } from '../state/store'
 import type { Timer } from '../storage/chats'
 
@@ -22,6 +26,17 @@ export function CookMode() {
   const s = useAppState()
   const chat = activeChat(s)
   const plan = chat.ui.cookPlan
+  useBusy()
+  // Talking to the mini orb: the reply lands in the chat, and cook mode minimises once it is back,
+  // unless the reply updated the cooking plan itself.
+  const onVoiceText = useCallback((text: string) => {
+    const before = activeChat().ui.cookPlan
+    void sendUserMessage(text).then(() => {
+      const after = activeChat().ui.cookPlan
+      if (after === before && getState().view === 'cook') setState({ view: 'chat' })
+    })
+  }, [])
+  const voice = useVoice(onVoiceText)
   const pagerRef = useRef<HTMLDivElement>(null)
   const steps = plan?.steps ?? []
   const swapsDone = chat.ui.swapsDone ?? []
@@ -71,7 +86,8 @@ export function CookMode() {
   }
   const timerFor = (stepKey: string): Timer | undefined => chat.ui.timers.find((t) => t.stepKey === stepKey)
   const stepTitle = (stepKey: string) => steps.find((st) => st.key === stepKey)?.title ?? stepKey
-  const nextLabel = currentIndex === 0 ? 'Start cooking' : currentIndex === steps.length ? 'Finish' : 'Next'
+  const nextLabel = currentIndex === 0 ? 'Start cooking' : currentIndex === steps.length ? 'See how I did' : 'Next'
+  const orbState = voice.listening ? 'listening' : busy.chatSending ? 'thinking' : 'idle'
 
   return (
     <div className="cook" data-testid="cook">
@@ -142,7 +158,11 @@ export function CookMode() {
         })}
         <div className="step" style={{ padding: 0 }}>{currentIndex === wrapIndex ? <WrapupCard /> : <div className="center">Finish to see your wrap-up</div>}</div>
       </div>
+      {(voice.listening || voice.transcript) && <p className="cook-transcript" data-testid="cook-transcript">{voice.transcript || 'Listening…'}</p>}
       <div className="cook-nav">
+        <div className="mini-orb" data-testid="mini-orb">
+          <Orb state={orbState} getLevel={voice.getLevel} mood={chat.ui.mood} onTap={() => { if (voice.listening) voice.stop(); else if (!busy.chatSending) voice.start() }} size={48} />
+        </div>
         <button className="btn" onClick={() => go(currentIndex - 1)} disabled={currentIndex === 0} data-testid="prev">Back</button>
         {currentIndex < wrapIndex && (
           <button className={`btn ${currentIndex === steps.length ? 'green' : 'primary'}`} onClick={() => go(currentIndex + 1)} data-testid="next">

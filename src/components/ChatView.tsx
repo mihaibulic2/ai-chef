@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Orb, type OrbState } from './Orb'
 import { GearIcon, PlusIcon, SendIcon } from './Icons'
 import { RecipeCarousel } from './RecipeCarousel'
-import { Recognizer, speechSupported, type RecognizerResult } from '../speech/recognizer'
-import { LevelMeter, levelMeterSupported } from '../speech/level'
+import { useVoice } from './useVoice'
 import { busy, judgeMissing, sendUserMessage, startNewChat } from '../state/actions'
 import { activeChat, setState, useAppState } from '../state/store'
 import { useBusy } from './useBusy'
@@ -19,22 +18,16 @@ export function ChatView() {
   const s = useAppState()
   const chat = activeChat(s)
   useBusy()
-  const [listening, setListening] = useState(false)
-  const [transcript, setTranscript] = useState('')
   const [text, setText] = useState('')
   const [scrolled, setScrolled] = useState(false)
   const [awayFromBottom, setAwayFromBottom] = useState(false)
-  const recRef = useRef<Recognizer | null>(null)
-  const meterRef = useRef<LevelMeter | null>(null)
-  // Monotonic token: a meter that resolves after its session ended is stopped immediately.
-  const sessionRef = useRef(0)
-  // Orb reads this every frame; no React state involved.
-  const levelRef = useRef(0)
-  const pulseTimer = useRef(0)
   const listRef = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
 
   useEffect(() => { judgeMissing() }, [chat.id])
+  const stickOnSend = useCallback((t: string) => { stickToBottom.current = true; void sendUserMessage(t) }, [])
+  const { listening, transcript, start, stop, getLevel } = useVoice(stickOnSend)
+
 
   const scrollToBottom = useCallback((smooth = true) => {
     const el = listRef.current
@@ -57,72 +50,10 @@ export function ChatView() {
     setAwayFromBottom(gap > 160)
   }
 
-  const endSession = useCallback(() => {
-    sessionRef.current++
-    meterRef.current?.stop()
-    meterRef.current = null
-    window.clearTimeout(pulseTimer.current)
-    levelRef.current = 0
-    recRef.current = null
-    setListening(false)
-  }, [])
-
-  const finish = useCallback((result: RecognizerResult) => {
-    endSession()
-    if (result.error) {
-      setTranscript(result.error)
-    } else if (result.text) {
-      setTranscript('')
-      void sendUserMessage(result.text)
-    } else {
-      setTranscript("Didn't catch that. Tap and try again.")
-    }
-  }, [endSession])
-
-  const startListening = useCallback(() => {
-    if (!speechSupported()) {
-      setTranscript('Voice is not available in this browser. Type below instead.')
-      return
-    }
-    const session = ++sessionRef.current
-    setListening(true)
-    setTranscript('')
-    stickToBottom.current = true
-    const rec = new Recognizer({
-      onInterim: (t) => {
-        setTranscript(t)
-        // Pulse per new result when there is no mic meter (Safari), then decay.
-        if (!meterRef.current) {
-          levelRef.current = 0.7
-          window.clearTimeout(pulseTimer.current)
-          pulseTimer.current = window.setTimeout(() => { levelRef.current = 0 }, 250)
-        }
-      },
-      onFinal: finish,
-    })
-    recRef.current = rec
-    if (!rec.start()) return
-    if (!levelMeterSupported()) return
-    // Chrome only: a loudness meter for a smoother pulse. Created inside the tap so the AudioContext may run.
-    const meter = new LevelMeter()
-    meter.start().then(() => {
-      if (sessionRef.current !== session) {
-        meter.stop()
-        return
-      }
-      meterRef.current = meter
-    }).catch(() => meter.stop())
-  }, [finish])
-
-  const getLevel = useCallback(() => (meterRef.current ? meterRef.current.level() : levelRef.current), [])
-
   const onOrbTap = () => {
-    if (listening) recRef.current?.stop()
-    else if (!busy.chatSending) startListening()
+    if (listening) stop()
+    else if (!busy.chatSending) start()
   }
-
-  // Leaving the screen mid-sentence drops the words instead of sending half a message.
-  useEffect(() => () => { recRef.current?.abort(); endSession() }, [endSession])
 
   const started = chat.ui.messages.length > 0
   const orbState: OrbState = listening ? 'listening' : busy.chatSending ? 'thinking' : 'idle'
