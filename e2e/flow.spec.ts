@@ -153,7 +153,7 @@ test.describe('cooking', () => {
     const wrap = page.getByTestId('wrapup')
     await expect(wrap).toBeVisible({ timeout: 10_000 })
     await expect(wrap.getByRole('heading').first()).not.toBeEmpty()
-    await expect(wrap).toContainText('Next time')
+    await expect(wrap).toContainText('next time')
     expect(((await wrap.textContent()) ?? '').length).toBeGreaterThan(40)
 
     await page.getByTestId('cook-close').click()

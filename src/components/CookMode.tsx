@@ -8,7 +8,7 @@ import { SwapCard } from './SwapCard'
 import { formatClock, isActive, remainingNow } from '../state/timers'
 import { primeAudio } from '../state/timerPing'
 import { swapsForStep } from '../state/cook'
-import { INGREDIENTS_KEY, busy, sendUserMessage, setCurrentStep, timerRemove, timerRestart, timerStart, timerToggle } from '../state/actions'
+import { INGREDIENTS_KEY, busy, clearTimers, sendUserMessage, setCurrentStep, timerRemove, timerRestart, timerStart, timerToggle } from '../state/actions'
 import { getState } from '../state/store'
 import { activeChat, setState, useAppState } from '../state/store'
 import type { Timer } from '../storage/chats'
@@ -59,6 +59,19 @@ export function CookMode() {
 
   useEffect(() => () => window.clearTimeout(scrollTimer.current), [])
 
+  // The meal is done once the summary opens: stop and drop every timer.
+  useEffect(() => {
+    if (key === '__wrapup' && chat.ui.timers.length > 0) clearTimers()
+  }, [key, chat.ui.timers.length])
+
+  const close = () => {
+    if (chat.ui.timers.some((t) => isActive(t))) {
+      if (!confirm('You have timers running. Cancel them and leave?')) return
+      clearTimers()
+    }
+    setState({ view: 'chat' })
+  }
+
   if (!plan) {
     return (
       <div className="cook"><div className="center">No cooking plan yet. <button className="btn" onClick={() => setState({ view: 'chat' })}>Back</button></div></div>
@@ -93,7 +106,7 @@ export function CookMode() {
     <div className="cook" data-testid="cook">
       <div className="cook-head">
         <span className="title">{plan.title} · {plan.servings} servings</span>
-        <button className="icon-btn" aria-label="Close" onClick={() => setState({ view: 'chat' })} data-testid="cook-close"><CloseIcon /></button>
+        <button className="icon-btn" aria-label="Close" onClick={close} data-testid="cook-close"><CloseIcon /></button>
       </div>
       {chat.ui.timers.length > 0 && (
         <div className="timer-banner" data-testid="timer-banner">

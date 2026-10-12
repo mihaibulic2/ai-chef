@@ -349,6 +349,11 @@ export function timerRestart(stepKey: string): void {
   updateChat(chat.id, (c) => ({ ...c, ui: { ...c.ui, timers: c.ui.timers.map((t) => (t.stepKey === stepKey ? restartTimer(t) : t)) } }))
 }
 
+export function clearTimers(): void {
+  const chat = activeChat()
+  updateChat(chat.id, (c) => ({ ...c, ui: { ...c.ui, timers: [] } }))
+}
+
 export function timerRemove(stepKey: string): void {
   const chat = activeChat()
   updateChat(chat.id, (c) => ({ ...c, ui: { ...c.ui, timers: c.ui.timers.filter((t) => t.stepKey !== stepKey) } }))

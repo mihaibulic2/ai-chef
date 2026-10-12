@@ -2,8 +2,10 @@ import { useCallback, useEffect } from 'react'
 import { Orb } from './Orb'
 import type { Wrapup } from '../ai/types'
 import { busy, loadWrapup } from '../state/actions'
-import { activeChat, setState, useAppState } from '../state/store'
+import { activeChat, useAppState } from '../state/store'
 import { useBusy } from './useBusy'
+
+const capitalize = (t: string) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t)
 
 export function WrapupCard() {
   const s = useAppState()
@@ -45,8 +47,10 @@ export function WrapupCard() {
           </div>
         ))}
       </div>
-      <div className="card tipbox rise" style={{ animationDelay: '0.9s' }}><b>Next time.</b> {w.tip.replace(/^next time[,.]?\s*/i, '')}</div>
-      <button className="btn primary rise" style={{ marginTop: 18, animationDelay: '1s' }} onClick={() => setState({ view: 'chat' })}>Done</button>
+      <div className="card swap rise" style={{ width: '100%', textAlign: 'left', animationDelay: '0.9s' }} data-testid="wrapup-tip">
+        <div className="eyebrow">Health hack · next time</div>
+        <div className="swap-change">{capitalize(w.tip.replace(/^next time[,.]?\s*/i, ''))}</div>
+      </div>
     </div>
   )
 }
