@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { BackIcon } from './Icons'
 import { Celebrate } from './Celebrate'
 import { dotStyle } from './dotColor'
 import type { Judgement, NutritionPerServing } from '../ai/types'
-import { busy, cookRecipe, healthiestId, judgeRecipe } from '../state/actions'
+import { cookRecipe, healthiestId, isJudging, judgeRecipe } from '../state/actions'
 import { activeChat, setState, useAppState } from '../state/store'
 import { useBusy } from './useBusy'
 
@@ -37,7 +37,11 @@ export function HealthGrid() {
   const allergenNames = lines(s.settings.allergensText)
   const watchNames = lines(s.settings.watchlistText)
 
-  const status = (id: string): { j?: Judgement; loading: boolean; failed: boolean } => ({ j: chat.ui.judgeById[id], loading: busy.judging.has(id), failed: !!chat.ui.judgeFailed[id] })
+  const cookTimer = useRef(0)
+  useEffect(() => () => window.clearTimeout(cookTimer.current), [])
+  const onCelebrateDone = useCallback(() => setCelebrate(null), [])
+
+  const status = (id: string): { j?: Judgement; loading: boolean; failed: boolean } => ({ j: chat.ui.judgeById[id], loading: isJudging(chat.id, id), failed: !!chat.ui.judgeFailed[id] })
 
   const cell = (id: string, render: (j: Judgement) => React.ReactNode) => {
     const st = status(id)
@@ -46,12 +50,16 @@ export function HealthGrid() {
     return <Loading />
   }
 
-  const findBy = (list: { name: string }[], name: string) => list.find((x) => x.name.toLowerCase() === name.toLowerCase()) ?? list.find((x) => x.name.toLowerCase().includes(name.toLowerCase().split(' ')[0]))
+  // Exact name first, then one name containing the other; never a first-word guess.
+  const findBy = <T extends { name: string }>(list: T[], name: string): T | undefined => {
+    const n = name.toLowerCase().trim()
+    return list.find((x) => x.name.toLowerCase().trim() === n) ?? list.find((x) => { const xn = x.name.toLowerCase().trim(); return xn.includes(n) || n.includes(xn) })
+  }
 
   const onCook = (id: string) => {
-    if (id === best && ids.length > 1) {
+    if (id === best) {
       setCelebrate(id)
-      setTimeout(() => void cookRecipe(id), 1200)
+      cookTimer.current = window.setTimeout(() => void cookRecipe(id), 1200)
     } else void cookRecipe(id)
   }
 
@@ -66,7 +74,7 @@ export function HealthGrid() {
 
   return (
     <div className="screen" data-testid="grid">
-      {celebrate && <Celebrate text="Healthiest pick. Nice." onDone={() => setCelebrate(null)} />}
+      {celebrate && <Celebrate text="Healthiest pick. Nice." onDone={onCelebrateDone} />}
       <div className="header">
         <button className="icon-btn" onClick={() => setState({ view: 'chat' })} aria-label="Back" data-testid="grid-back"><BackIcon /></button>
         <h1>Compare</h1>
@@ -101,7 +109,7 @@ export function HealthGrid() {
                 {recipes.map((r) => (
                   <td key={r.id} className="col">
                     {cell(r.id, (j) => {
-                      const c = findBy(j.concerns, name) as Judgement['concerns'][number] | undefined
+                      const c = findBy(j.concerns, name)
                       if (!c) return <span className="dim">—</span>
                       return <><span className={`verdict-${c.verdict}`}>{c.verdict === 'good' ? 'Good' : c.verdict === 'bad' ? 'Watch' : 'OK'}</span>{c.note && <div className="cell-note">{c.note}</div>}</>
                     })}
@@ -116,7 +124,7 @@ export function HealthGrid() {
                 {recipes.map((r) => (
                   <td key={r.id} className="col">
                     {cell(r.id, (j) => {
-                      const a = findBy(j.allergens, name) as Judgement['allergens'][number] | undefined
+                      const a = findBy(j.allergens, name)
                       if (!a) return <span className="dim">—</span>
                       return <><span className={a.present ? 'verdict-bad' : 'verdict-good'}>{a.present ? 'Contains' : 'Free'}</span>{a.note && <div className="cell-note">{a.note}</div>}</>
                     })}
@@ -131,7 +139,7 @@ export function HealthGrid() {
                 {recipes.map((r) => (
                   <td key={r.id} className="col">
                     {cell(r.id, (j) => {
-                      const w = findBy(j.watchlist, name) as Judgement['watchlist'][number] | undefined
+                      const w = findBy(j.watchlist, name)
                       if (!w) return <span className="dim">—</span>
                       return <><span className={w.present ? 'verdict-bad' : 'verdict-good'}>{w.present ? 'Present' : 'None'}</span>{w.note && <div className="cell-note">{w.note}</div>}</>
                     })}
@@ -147,13 +155,14 @@ export function HealthGrid() {
                 return (
                   <td key={r.id} className="col" data-testid={`ingredients-${r.id}`}>
                     {r.ingredients.map((ing, i) => {
-                      const judged = st.j?.ingredients.find((x) => x.name.toLowerCase() === ing.name.toLowerCase()) ?? st.j?.ingredients[i]
+                      // Match by name; fall back to position only when the judge returned the same count.
+                      const judged = st.j ? (findBy(st.j.ingredients, ing.name) ?? (st.j.ingredients.length === r.ingredients.length ? st.j.ingredients[i] : undefined)) : undefined
                       return (
                         <div key={i} className="ingr">
                           <span className="dot-col">
                             {judged ? (
                               <span className="dot" style={dotStyle(judged.verdict, judged.significance)} title={judged.note} data-verdict={judged.verdict} />
-                            ) : st.failed ? (
+                            ) : st.failed || st.j ? (
                               <span className="dot hidden" />
                             ) : (
                               <Loading />

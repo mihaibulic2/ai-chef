@@ -130,8 +130,7 @@ export const MOCK_WRAPUP: Wrapup = {
   tip: 'Next time swap half the spaghetti for whole wheat to add fiber without changing the taste much.',
 }
 
-let idCounter = 0
-const tid = () => `toolu_mock_${++idCounter}`
+const tid = () => `toolu_mock_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
 
 export class MockAiClient implements AiClient {
   async chat(history: Anthropic.MessageParam[], _profile: Profile, handlers: ChatTurnHandlers): Promise<Anthropic.MessageParam[]> {
@@ -149,13 +148,14 @@ export class MockAiClient implements AiClient {
     const callTool = async (name: string, input: unknown, text: string) => {
       await say(text)
       const id = tid()
-      appended.push({ role: 'assistant', content: [{ type: 'text', text }, { type: 'tool_use', id, name, input }] })
+      const blocks: Anthropic.ContentBlockParam[] = text ? [{ type: 'text', text }] : []
+      appended.push({ role: 'assistant', content: [...blocks, { type: 'tool_use', id, name, input }] })
       const result = await handlers.onTool(name, input)
       appended.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: result }] })
     }
 
     await wait(600)
-    if (lower.includes('cook this') || lower.includes("let's make") || lower.includes('lets make') || lower.includes('cook ')) {
+    if (lower.includes('cook this') || lower.includes("let's make") || lower.includes('lets make') || lower.includes('show_cooking')) {
       await callTool('set_mood', { positivity: 0.95 }, '')
       await callTool('show_cooking', MOCK_PLAN, 'Great pick. Here we go, step by step.')
     } else if (history.length <= 1 || lower.includes('pasta') || lower.includes('idea')) {

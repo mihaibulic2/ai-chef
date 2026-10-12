@@ -3,7 +3,7 @@ import { BackIcon, CameraIcon } from '../Icons'
 import { CALL_NAMES, isMockMode } from '../../ai/client'
 import type { CallName } from '../../ai/types'
 import { ai, deleteChat, resetClient, switchChat } from '../../state/actions'
-import { getState, resetState, setState, useAppState } from '../../state/store'
+import { resetState, setState, useAppState } from '../../state/store'
 import { clearAll, usedBytes } from '../../storage/local'
 import { DEFAULT_SETTINGS, type Settings } from '../../storage/settings'
 import { fileToImageInput } from './imageResize'
@@ -21,7 +21,14 @@ export function SettingsView() {
   const [checks, setChecks] = useState<Record<CallName, CheckState>>(() => Object.fromEntries(CALL_NAMES.map((n) => [n, { state: 'idle' }])) as Record<CallName, CheckState>)
   const [photoBusy, setPhotoBusy] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const draftRef = useRef(draft)
+  draftRef.current = draft
   const dirty = JSON.stringify(draft) !== JSON.stringify(s.settings)
+
+  const goBack = () => {
+    if (dirty && !confirm('Discard unsaved changes?')) return
+    setState({ view: 'chat' })
+  }
 
   useEffect(() => { if (saved) { const t = setTimeout(() => setSaved(false), 1800); return () => clearTimeout(t) } }, [saved])
 
@@ -47,7 +54,6 @@ export function SettingsView() {
 
   const onPhotos = async (files: FileList | null) => {
     if (!files || files.length === 0) return
-    if (dirty) setState({ settings: draft })
     const found: string[] = []
     for (let i = 0; i < files.length; i++) {
       setPhotoBusy(`Reading photo ${i + 1} of ${files.length}…`)
@@ -61,10 +67,15 @@ export function SettingsView() {
     }
     setPhotoBusy(null)
     if (found.length) {
-      const next = { ...getState().settings, pantryText: [getState().settings.pantryText.trim(), ...found].filter(Boolean).join('\n') }
+      // Append to whatever the user has typed meanwhile, and save everything.
+      const next = { ...draftRef.current, pantryText: [draftRef.current.pantryText.trim(), ...found].filter(Boolean).join('\n') }
       setDraft(next)
       setState({ settings: next })
+      resetClient()
       setSaved(true)
+    } else {
+      setPhotoBusy('No products found in those photos')
+      setTimeout(() => setPhotoBusy(null), 2500)
     }
     if (fileRef.current) fileRef.current.value = ''
   }
@@ -80,7 +91,7 @@ export function SettingsView() {
   return (
     <div className="screen" data-testid="settings">
       <div className="header">
-        <button className="icon-btn" onClick={() => setState({ view: 'chat' })} aria-label="Back" data-testid="settings-back"><BackIcon /></button>
+        <button className="icon-btn" onClick={goBack} aria-label="Back" data-testid="settings-back"><BackIcon /></button>
         <h1>Settings</h1>
         <span style={{ width: 40 }} />
       </div>
@@ -147,14 +158,14 @@ export function SettingsView() {
                         <div className="t">{c.title}{c.id === s.activeChatId ? ' · current' : ''}</div>
                         <div className="d">{new Date(c.createdAt).toLocaleString()} · {c.ui.messages.length} messages</div>
                       </button>
-                      <button className="del" onClick={() => deleteChat(c.id)} aria-label={`Delete ${c.title}`}>Delete</button>
+                      <button className="del" onClick={() => { if (confirm(`Delete "${c.title}"?`)) deleteChat(c.id) }} aria-label={`Delete ${c.title}`}>Delete</button>
                     </div>
                   ))}
                 </div>
               </div>
               <div className="row">
                 <button className="btn" onClick={() => { if (confirm('Clear all chats and settings on this device?')) { clearAll(); setState({ settings: DEFAULT_SETTINGS }); setDraft(DEFAULT_SETTINGS); resetState() } }} data-testid="clear-all">Clear all</button>
-                <button className="btn ghost" onClick={() => { const next = { ...DEFAULT_SETTINGS, apiKey: draft.apiKey }; setDraft(next) }}>Reset defaults</button>
+                <button className="btn ghost" onClick={() => { if (!confirm('Reset pantry, profile, and about-me to the defaults? Your API key is kept.')) return; const next = { ...DEFAULT_SETTINGS, apiKey: draft.apiKey }; setDraft(next); setState({ settings: next }); setSaved(true) }}>Reset defaults</button>
               </div>
             </>
           )}

@@ -16,7 +16,7 @@ const verdict = { type: 'string', enum: ['good', 'neutral', 'bad'] }
 export const ingredientSchema = obj({ name: str, quantity: str })
 
 export const recipeSchema = obj({
-  id: { ...str, description: 'Short stable id, e.g. "r1"' },
+  id: { ...str, description: 'Short id, unique across the whole conversation (never reuse an id from an earlier show_recipes call), e.g. "r1", "r2", ... "r7"' },
   title: str,
   pitch: { ...str, description: 'One appetizing sentence, at most 14 words' },
   timeMin: num,
@@ -35,7 +35,7 @@ export const cookStepSchema = obj({
 })
 
 export const cookPlanSchema = obj({
-  recipeId: str,
+  recipeId: { ...str, description: 'The id of the recipe from show_recipes when it came from there. Keep the same value when re-sending an updated plan.' },
   title: str,
   servings: num,
   ingredients: arr(ingredientSchema),
@@ -51,7 +51,7 @@ export const chatTools: Anthropic.Tool[] = [
   },
   {
     name: 'set_mood',
-    description: "Set the assistant's mood tint from 0 (neutral) to 1 (very positive). Call whenever the conversation's direction changes.",
+    description: "Set the assistant's mood tint: 0.3 is neutral, up to 1 is very positive; never below 0.2. Call whenever the conversation's direction changes.",
     strict: true,
     input_schema: obj({ positivity: num }) as Anthropic.Tool['input_schema'],
   },

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Orb, type OrbState } from './Orb'
 import { GearIcon, PlusIcon, SendIcon } from './Icons'
 import { RecipeCarousel } from './RecipeCarousel'
-import { Recognizer, speechSupported } from '../speech/recognizer'
+import { Recognizer, speechSupported, type RecognizerResult } from '../speech/recognizer'
 import { LevelMeter } from '../speech/level'
 import { busy, judgeMissing, sendUserMessage, startNewChat } from '../state/actions'
 import { activeChat, setState, useAppState } from '../state/store'
@@ -14,11 +14,14 @@ export function ChatView() {
   useBusy()
   const [listening, setListening] = useState(false)
   const [transcript, setTranscript] = useState('')
-  const [level, setLevel] = useState(0)
   const [text, setText] = useState('')
   const recRef = useRef<Recognizer | null>(null)
   const meterRef = useRef<LevelMeter | null>(null)
-  const rafRef = useRef(0)
+  // Monotonic token: a meter that resolves after its session ended is stopped immediately.
+  const sessionRef = useRef(0)
+  // Orb reads this every frame; no React state involved.
+  const levelRef = useRef(0)
+  const pulseTimer = useRef(0)
   const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { judgeMissing() }, [chat.id])
@@ -26,58 +29,74 @@ export function ChatView() {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
   }, [chat.ui.messages.length, chat.ui.messages[chat.ui.messages.length - 1]?.text])
 
-  const stopMeter = useCallback(() => {
-    cancelAnimationFrame(rafRef.current)
+  const endSession = useCallback(() => {
+    sessionRef.current++
     meterRef.current?.stop()
     meterRef.current = null
-    setLevel(0)
+    window.clearTimeout(pulseTimer.current)
+    levelRef.current = 0
+    recRef.current = null
+    setListening(false)
   }, [])
 
-  const finish = useCallback((final: string) => {
-    setListening(false)
-    setTranscript('')
-    stopMeter()
-    recRef.current = null
-    if (final.trim()) void sendUserMessage(final)
-  }, [stopMeter])
+  const finish = useCallback((result: RecognizerResult) => {
+    endSession()
+    if (result.error) {
+      setTranscript(result.error)
+    } else {
+      setTranscript('')
+      if (result.text) void sendUserMessage(result.text)
+    }
+  }, [endSession])
 
   const startListening = useCallback(() => {
     if (!speechSupported()) {
       setTranscript('Voice is not available in this browser. Type below instead.')
       return
     }
+    const session = ++sessionRef.current
     setListening(true)
     setTranscript('')
+    // Create the meter synchronously inside the tap so the AudioContext is born in the gesture.
+    const meter = new LevelMeter()
     const rec = new Recognizer({
       onInterim: (t) => {
         setTranscript(t)
-        // Fallback pulse when the mic meter is unavailable: nudge the level on every new word.
-        if (!meterRef.current) setLevel(0.5 + Math.random() * 0.3)
+        // Fallback pulse when the mic meter is unavailable: a short bump per new result, then decay.
+        if (!meterRef.current) {
+          levelRef.current = 0.7
+          window.clearTimeout(pulseTimer.current)
+          pulseTimer.current = window.setTimeout(() => { levelRef.current = 0 }, 250)
+        }
       },
       onFinal: finish,
-      onError: (msg) => setTranscript(msg),
     })
     recRef.current = rec
-    rec.start()
-    const meter = new LevelMeter()
+    if (!rec.start()) {
+      meter.stop()
+      return
+    }
     meter.start().then(() => {
-      meterRef.current = meter
-      const tick = () => {
-        setLevel(meter.level())
-        rafRef.current = requestAnimationFrame(tick)
+      if (sessionRef.current !== session) {
+        meter.stop()
+        return
       }
-      tick()
+      meterRef.current = meter
     }).catch(() => {
-      // iOS may refuse a second mic consumer; the interim-text fallback above keeps the orb alive.
+      // iOS may refuse a second mic consumer; the interim-text fallback keeps the orb alive.
+      meter.stop()
     })
   }, [finish])
+
+  const getLevel = useCallback(() => (meterRef.current ? meterRef.current.level() : levelRef.current), [])
 
   const onOrbTap = () => {
     if (listening) recRef.current?.stop()
     else if (!busy.chatSending) startListening()
   }
 
-  useEffect(() => () => { recRef.current?.stop(); stopMeter() }, [stopMeter])
+  // Leaving the screen mid-sentence drops the words instead of sending half a message.
+  useEffect(() => () => { recRef.current?.abort(); endSession() }, [endSession])
 
   const orbState: OrbState = listening ? 'listening' : busy.chatSending ? 'thinking' : 'idle'
   const statusChip = listening ? (
@@ -100,8 +119,11 @@ export function ChatView() {
         </div>
       </div>
       <div className="chat-top">
-        <Orb state={orbState} level={level} mood={chat.ui.mood} onTap={onOrbTap} size={chat.ui.messages.length === 0 ? 240 : 150} />
+        <Orb state={orbState} getLevel={getLevel} mood={chat.ui.mood} onTap={onOrbTap} size={chat.ui.messages.length === 0 ? 240 : 150} />
         <div className="status-chip" data-testid="status">{statusChip}</div>
+        {chat.ui.cookPlan && !listening && !busy.chatSending && (
+          <button className="chip amber" style={{ marginTop: 8 }} onClick={() => setState({ view: 'cook' })} data-testid="resume-cooking"><span className="dot" />Resume cooking · {chat.ui.cookPlan.title}</button>
+        )}
         <p className="transcript" data-testid="transcript">{transcript}</p>
       </div>
       <div className="scroll" ref={listRef}>

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { CloseIcon, PauseIcon, PlayIcon, RestartIcon } from './Icons'
 import { WrapupCard } from './WrapupCard'
-import { formatClock, remainingNow } from '../state/timers'
+import { formatClock, isActive, remainingNow } from '../state/timers'
+import { primeAudio } from '../state/timerPing'
 import { setCurrentStep, timerRemove, timerRestart, timerStart, timerToggle } from '../state/actions'
 import { activeChat, setState, useAppState } from '../state/store'
 import type { Timer } from '../storage/chats'
@@ -23,8 +24,9 @@ export function CookMode() {
   const steps = plan?.steps ?? []
   const pages = steps.length + 1 // last page is the wrap-up
   const currentIndex = Math.max(0, chat.ui.currentStepKey === '__wrapup' ? steps.length : steps.findIndex((st) => st.key === chat.ui.currentStepKey))
-  useClock(chat.ui.timers.some((t) => t.running))
-  const pinged = useRef(new Set<string>())
+  useClock(chat.ui.timers.some((t) => isActive(t)))
+  const touching = useRef(false)
+  const scrollTimer = useRef(0)
 
   // Keep the pager on the current step (also after an in-place plan update).
   useEffect(() => {
@@ -33,17 +35,7 @@ export function CookMode() {
     el.scrollTo({ left: currentIndex * el.clientWidth, behavior: 'auto' })
   }, [currentIndex, plan?.steps.length])
 
-  // Ping when a timer hits zero.
-  useEffect(() => {
-    chat.ui.timers.forEach((t) => {
-      const rem = remainingNow(t)
-      if (t.running && rem <= 0 && !pinged.current.has(t.stepKey)) {
-        pinged.current.add(t.stepKey)
-        try { navigator.vibrate?.([200, 100, 200]) } catch { /* unsupported */ }
-      }
-      if (rem > 0) pinged.current.delete(t.stepKey)
-    })
-  })
+  useEffect(() => () => window.clearTimeout(scrollTimer.current), [])
 
   if (!plan) {
     return (
@@ -55,11 +47,20 @@ export function CookMode() {
     const idx = Math.max(0, Math.min(pages - 1, i))
     setCurrentStep(idx === steps.length ? '__wrapup' : steps[idx].key)
   }
+  // Only settle on a page once the finger is up, so we never scroll under a drag.
   const onScrollEnd = () => {
     const el = pagerRef.current
-    if (!el) return
+    if (!el || touching.current) return
     const idx = Math.round(el.scrollLeft / el.clientWidth)
     if (idx !== currentIndex) go(idx)
+  }
+  const scheduleScrollEnd = () => {
+    window.clearTimeout(scrollTimer.current)
+    scrollTimer.current = window.setTimeout(onScrollEnd, 120)
+  }
+  const goToStep = (key: string) => {
+    const i = steps.findIndex((st) => st.key === key)
+    if (i >= 0) go(i)
   }
   const timerFor = (key: string): Timer | undefined => chat.ui.timers.find((t) => t.stepKey === key)
   const stepTitle = (key: string) => steps.find((st) => st.key === key)?.title ?? key
@@ -75,7 +76,7 @@ export function CookMode() {
           {chat.ui.timers.map((t) => {
             const rem = remainingNow(t)
             return (
-              <button key={t.stepKey} className={`timer-pill${rem <= 0 ? ' done' : ''}`} onClick={() => go(steps.findIndex((st) => st.key === t.stepKey))}>
+              <button key={t.stepKey} className={`timer-pill${rem <= 0 ? ' done' : ''}`} onClick={() => goToStep(t.stepKey)}>
                 <span className="name">{stepTitle(t.stepKey)}</span>
                 <span className="clock">{rem <= 0 ? 'Done' : formatClock(rem)}</span>
               </button>
@@ -83,7 +84,14 @@ export function CookMode() {
           })}
         </div>
       )}
-      <div className="step-pager" ref={pagerRef} onScroll={(e) => { const el = e.currentTarget; clearTimeout((el as unknown as { _t?: number })._t); (el as unknown as { _t?: number })._t = window.setTimeout(onScrollEnd, 120) }}>
+      <div
+        className="step-pager"
+        ref={pagerRef}
+        onScroll={scheduleScrollEnd}
+        onTouchStart={() => { touching.current = true }}
+        onTouchEnd={() => { touching.current = false; scheduleScrollEnd() }}
+        onTouchCancel={() => { touching.current = false; scheduleScrollEnd() }}
+      >
         {steps.map((st, i) => {
           const t = timerFor(st.key)
           const rem = t ? remainingNow(t) : 0
@@ -97,13 +105,13 @@ export function CookMode() {
                   <div className={`timer-box${rem <= 0 ? ' done' : ''}`} data-testid={`timer-${st.key}`}>
                     <span className="clock">{rem <= 0 ? 'Done' : formatClock(rem)}</span>
                     <span className="ctl">
-                      <button className="icon-btn" aria-label={t.running ? 'Pause' : 'Play'} onClick={() => timerToggle(st.key)}>{t.running ? <PauseIcon /> : <PlayIcon />}</button>
+                      {rem > 0 && <button className="icon-btn" aria-label={t.running ? 'Pause' : 'Play'} onClick={() => timerToggle(st.key)}>{t.running ? <PauseIcon /> : <PlayIcon />}</button>}
                       <button className="icon-btn" aria-label="Restart" onClick={() => timerRestart(st.key)}><RestartIcon /></button>
                       <button className="icon-btn" aria-label="Remove timer" onClick={() => timerRemove(st.key)}><CloseIcon /></button>
                     </span>
                   </div>
                 ) : (
-                  <button className="btn" style={{ marginTop: 18, alignSelf: 'flex-start' }} onClick={() => timerStart(st.key, st.durationMin!)} data-testid={`start-timer-${st.key}`}>
+                  <button className="btn" style={{ marginTop: 18, alignSelf: 'flex-start' }} onClick={() => { primeAudio(); timerStart(st.key, st.durationMin!) }} data-testid={`start-timer-${st.key}`}>
                     <PlayIcon /> Start {st.durationMin} min timer
                   </button>
                 )

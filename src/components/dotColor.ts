@@ -11,8 +11,8 @@ export const DOT_HUES: Record<Verdict, string> = {
 
 /** CSS background for an ingredient dot: hue from verdict, intensity from significance, grey below the floor. */
 export function dotStyle(verdict: Verdict, significance: number): { background: string; boxShadow: string } {
-  const s = Math.max(0, Math.min(1, significance))
-  if (s < GREY_FLOOR) return { background: 'rgba(120,120,128,0.35)', boxShadow: 'none' }
+  const s = Number.isFinite(significance) ? Math.max(0, Math.min(1, significance)) : 0
+  if (s < GREY_FLOOR || !DOT_HUES[verdict]) return { background: 'rgba(120,120,128,0.35)', boxShadow: 'none' }
   const t = (s - GREY_FLOOR) / (1 - GREY_FLOOR)
   const alpha = 0.35 + 0.65 * t
   const rgb = DOT_HUES[verdict]

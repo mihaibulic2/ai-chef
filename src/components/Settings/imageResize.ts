@@ -13,10 +13,12 @@ export function fileToImageInput(file: File, maxSide = 1280): Promise<ImageInput
       canvas.width = w
       canvas.height = h
       const ctx = canvas.getContext('2d')
-      if (!ctx) return reject(new Error('Canvas unavailable'))
+      if (!ctx) { URL.revokeObjectURL(url); return reject(new Error('Canvas unavailable')) }
       ctx.drawImage(img, 0, 0, w, h)
       URL.revokeObjectURL(url)
       const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+      canvas.width = 0
+      canvas.height = 0
       resolve({ mediaType: 'image/jpeg', base64: dataUrl.split(',')[1] })
     }
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read the photo')) }

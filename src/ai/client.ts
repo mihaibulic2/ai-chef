@@ -35,6 +35,8 @@ export type AiErrorKind = 'no_key' | 'auth' | 'network' | 'refusal' | 'format' |
 
 export class AiError extends Error {
   readonly kind: AiErrorKind
+  /** For chat turns: history from completed tool rounds, ending in a valid user tool_result message. */
+  partial?: Anthropic.MessageParam[]
   constructor(message: string, kind: AiErrorKind) {
     super(message)
     this.kind = kind
@@ -45,12 +47,15 @@ const lines = (text: string) => text.split('\n').map((l) => l.trim()).filter(Boo
 const listOrNone = (text: string) => (lines(text).length ? lines(text).map((l) => `- ${l}`).join('\n') : '(none)')
 
 export function renderChatSystem(profile: Profile): string {
-  return CALLS.chat.prompt
-    .replace('{{aboutMe}}', profile.aboutMe.trim() || '(nothing provided)')
-    .replace('{{pantry}}', listOrNone(profile.pantryText))
-    .replace('{{watchlist}}', listOrNone(profile.watchlistText))
-    .replace('{{allergens}}', listOrNone(profile.allergensText))
-    .replace('{{concerns}}', listOrNone(profile.concernsText))
+  const fill: Record<string, string> = {
+    aboutMe: profile.aboutMe.trim() || '(nothing provided)',
+    pantry: listOrNone(profile.pantryText),
+    watchlist: listOrNone(profile.watchlistText),
+    allergens: listOrNone(profile.allergensText),
+    concerns: listOrNone(profile.concernsText),
+  }
+  // Function replacer: user text may contain `$` patterns that a string replacement would interpret.
+  return CALLS.chat.prompt.replace(/\{\{(\w+)\}\}/g, (_m, key: string) => fill[key] ?? '')
 }
 
 export function profileBlock(profile: Profile): string {
@@ -95,6 +100,7 @@ export class RealAiClient implements AiClient {
         output_config: { ...this.base(call).output_config, format: { type: 'json_schema', schema } as never },
       })
       if (res.stop_reason === 'refusal') throw new AiError('The AI declined this request.', 'refusal')
+      if (res.stop_reason === 'max_tokens') throw new AiError('The reply was cut off. Try again.', 'format')
       const text = res.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map((b) => b.text).join('')
       try {
         return JSON.parse(text) as T
@@ -109,6 +115,8 @@ export class RealAiClient implements AiClient {
   async chat(history: Anthropic.MessageParam[], profile: Profile, handlers: ChatTurnHandlers): Promise<Anthropic.MessageParam[]> {
     const appended: Anthropic.MessageParam[] = []
     const messages = [...history]
+    /** Index into `appended` after the last complete tool round (assistant + tool_result). */
+    let committed = 0
     try {
       for (let round = 0; round < 6; round++) {
         const stream = this.client.messages.stream({
@@ -141,10 +149,13 @@ export class RealAiClient implements AiClient {
         const user: Anthropic.MessageParam = { role: 'user', content: results }
         messages.push(user)
         appended.push(user)
+        committed = appended.length
       }
       return appended
     } catch (err) {
-      throw toAiError(err)
+      const e = toAiError(err)
+      e.partial = appended.slice(0, committed)
+      throw e
     }
   }
 

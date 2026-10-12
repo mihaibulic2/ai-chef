@@ -12,7 +12,12 @@ export function startTimer(stepKey: string, minutes: number, now = Date.now()): 
 
 export function toggleTimer(t: Timer, now = Date.now()): Timer {
   const rem = remainingNow(t, now)
+  // A timer at zero cannot be resumed; only restart brings it back.
   return { ...t, remainingSec: rem, running: !t.running && rem > 0, updatedAt: now }
+}
+
+export function isActive(t: Timer, now = Date.now()): boolean {
+  return t.running && remainingNow(t, now) > 0
 }
 
 export function restartTimer(t: Timer, now = Date.now()): Timer {

@@ -6,17 +6,31 @@ export class LevelMeter {
   private stream: MediaStream | null = null
   private analyser: AnalyserNode | null = null
   private buf: Uint8Array<ArrayBuffer> | null = null
+  private stopped = false
 
+  /** Call synchronously from the tap handler so the AudioContext is created inside the user gesture. */
   async start(): Promise<void> {
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!Ctx || !navigator.mediaDevices?.getUserMedia) throw new Error('Audio unavailable')
     this.ctx = new Ctx()
-    const src = this.ctx.createMediaStreamSource(this.stream)
-    this.analyser = this.ctx.createAnalyser()
-    this.analyser.fftSize = 512
-    src.connect(this.analyser)
-    this.buf = new Uint8Array(new ArrayBuffer(this.analyser.fftSize))
-    if (this.ctx.state === 'suspended') await this.ctx.resume()
+    // Do not await: on some iOS versions resume() only settles inside a gesture.
+    this.ctx.resume().catch(() => undefined)
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    if (this.stopped) {
+      stream.getTracks().forEach((t) => t.stop())
+      throw new Error('stopped')
+    }
+    this.stream = stream
+    try {
+      const src = this.ctx.createMediaStreamSource(stream)
+      this.analyser = this.ctx.createAnalyser()
+      this.analyser.fftSize = 512
+      src.connect(this.analyser)
+      this.buf = new Uint8Array(new ArrayBuffer(this.analyser.fftSize))
+    } catch (err) {
+      this.stop()
+      throw err
+    }
   }
 
   /** 0..1 RMS loudness, roughly normalised for speech. */
@@ -33,6 +47,7 @@ export class LevelMeter {
   }
 
   stop(): void {
+    this.stopped = true
     this.stream?.getTracks().forEach((t) => t.stop())
     this.ctx?.close().catch(() => undefined)
     this.stream = null

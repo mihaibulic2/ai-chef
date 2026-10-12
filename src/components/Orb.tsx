@@ -4,8 +4,8 @@ export type OrbState = 'idle' | 'listening' | 'thinking'
 
 interface Props {
   state: OrbState
-  /** 0..1 mic loudness (listening only). */
-  level: number
+  /** Returns 0..1 mic loudness (listening only); read every frame so it never triggers a React render. */
+  getLevel: () => number
   /** 0..1 mood: 0 warm amber, 1 green. */
   mood: number
   onTap: () => void
@@ -24,10 +24,33 @@ const GREEN: [number, number, number][] = [[126, 217, 87], [60, 200, 150], [210,
 const RING_WARM: [number, number, number] = [240, 165, 58]
 const RING_GREEN: [number, number, number] = [126, 217, 87]
 
-export function Orb({ state, level, mood, onTap, size = 240 }: Props) {
+interface Sim { particles: Particle[]; blobs: { seed: number; rad: number }[]; t: number; smoothLevel: number; smoothMood: number; spin: number }
+
+function makeSim(mood: number): Sim {
+  return {
+    particles: Array.from({ length: 140 }, (_, i) => ({
+      r: 0.52 + Math.pow(Math.random(), 1.6) * 0.42,
+      a: Math.random() * Math.PI * 2,
+      speed: (0.08 + Math.random() * 0.25) * (Math.random() < 0.5 ? 1 : -1),
+      size: 0.6 + Math.random() * 1.8,
+      hue: i % 7 === 0 ? 2 : i % 3 === 0 ? 1 : 0,
+      twinkle: Math.random() * Math.PI * 2,
+    })),
+    blobs: Array.from({ length: 5 }, (_, i) => ({ seed: i * 1.7 + 0.3, rad: 0.22 + (i % 3) * 0.06 })),
+    t: 0,
+    smoothLevel: 0,
+    smoothMood: mood,
+    spin: 0,
+  }
+}
+
+export function Orb({ state, getLevel, mood, onTap, size = 240 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const props = useRef({ state, level, mood })
-  props.current = { state, level, mood }
+  const props = useRef({ state, getLevel, mood })
+  props.current = { state, getLevel, mood }
+  // Simulation state lives outside the effect so a size change (orb shrinking) does not reset it.
+  const simRef = useRef<Sim | null>(null)
+  if (!simRef.current) simRef.current = makeSim(mood)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -39,34 +62,27 @@ export function Orb({ state, level, mood, onTap, size = 240 }: Props) {
     canvas.height = size * dpr
     ctx.scale(dpr, dpr)
 
-    const particles: Particle[] = Array.from({ length: 140 }, (_, i) => ({
-      r: 0.52 + Math.pow(Math.random(), 1.6) * 0.42,
-      a: Math.random() * Math.PI * 2,
-      speed: (0.08 + Math.random() * 0.25) * (Math.random() < 0.5 ? 1 : -1),
-      size: 0.6 + Math.random() * 1.8,
-      hue: i % 7 === 0 ? 2 : i % 3 === 0 ? 1 : 0,
-      twinkle: Math.random() * Math.PI * 2,
-    }))
-    const blobs = Array.from({ length: 5 }, (_, i) => ({ seed: i * 1.7 + 0.3, rad: 0.22 + (i % 3) * 0.06 }))
+    const sim = simRef.current!
+    const { particles, blobs } = sim
 
     let raf = 0
     let last = performance.now()
-    let t = 0
-    let smoothLevel = 0
-    let smoothMood = props.current.mood
-    let spin = 0
     let breathe = 0
 
     const draw = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
-      const { state, level, mood } = props.current
+      const { state, getLevel, mood } = props.current
       const thinking = state === 'thinking'
       const listening = state === 'listening'
-      smoothLevel = lerp(smoothLevel, listening ? level : 0, listening ? 0.35 : 0.08)
-      smoothMood = lerp(smoothMood, mood, 0.03)
-      t += dt * (thinking ? 2.2 : listening ? 1.4 : 1)
-      spin += dt * (thinking ? 2.6 : 0.25)
+      sim.smoothLevel = lerp(sim.smoothLevel, listening ? getLevel() : 0, listening ? 0.35 : 0.08)
+      sim.smoothMood = lerp(sim.smoothMood, mood, 0.03)
+      sim.t += dt * (thinking ? 2.2 : listening ? 1.4 : 1)
+      sim.spin += dt * (thinking ? 2.6 : 0.25)
+      const t = sim.t
+      const spin = sim.spin
+      const smoothLevel = sim.smoothLevel
+      const smoothMood = sim.smoothMood
       breathe = 0.5 + 0.5 * Math.sin(t * 1.1)
 
       const cx = size / 2

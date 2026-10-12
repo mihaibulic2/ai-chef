@@ -7,7 +7,7 @@ import { setState } from '../state/store'
 export function RecipeCarousel({ chat, recipeIds }: { chat: Chat; recipeIds: string[] }) {
   const recipes = recipeIds.map((id) => chat.ui.recipesById[id]).filter(Boolean)
   const best = healthiestId(chat, recipeIds)
-  const selected = chat.ui.selectedIds.filter((id) => recipeIds.includes(id))
+  const selected = chat.ui.selectedIds.filter((id) => chat.ui.recipesById[id])
   return (
     <div data-testid="carousel">
       <div className="carousel">
@@ -22,7 +22,7 @@ export function RecipeCarousel({ chat, recipeIds }: { chat: Chat; recipeIds: str
               <p>{r.pitch}</p>
               <div className="tags">
                 {tags.map((t, i) => <span key={i} className={`tag ${tagTone(t)}`}>{t}</span>)}
-                {r.missing.map((m) => <span key={m} className="tag bad">missing: {m}</span>)}
+                {r.missing.map((m, i) => <span key={`m${i}`} className="tag bad">missing: {m}</span>)}
               </div>
               <div className="foot">
                 <button className="btn small" onClick={(e) => { e.stopPropagation(); void cookRecipe(r.id) }}>Cook this</button>

@@ -11,11 +11,12 @@ export function WrapupCard() {
   useEffect(() => { void loadWrapup() }, [chat.id, chat.ui.cookPlan?.recipeId])
   const w: Wrapup | undefined = chat.ui.wrapup
   if (!w) {
+    const failed = !busy.wrapup && busy.wrapupError
     return (
       <div className="wrap" data-testid="wrapup-loading">
         <div className="glow congrats pop"><div className="ring"><span className="spinner" style={{ width: 28, height: 28 }} /></div></div>
-        <p className="subline">{busy.wrapup ? 'Adding it up…' : 'Could not load the wrap-up.'}</p>
-        {!busy.wrapup && <button className="btn" onClick={() => void loadWrapup()}>Try again</button>}
+        <p className="subline">{failed ? busy.wrapupError : 'Adding it up…'}</p>
+        {failed && <button className="btn" onClick={() => void loadWrapup()}>Try again</button>}
       </div>
     )
   }

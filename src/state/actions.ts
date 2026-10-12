@@ -28,8 +28,10 @@ export function resetClient(): void {
 /** In-flight state that does not belong in storage. */
 export const busy = {
   chatSending: false,
+  /** Keys are `${chatId}:${recipeId}`. */
   judging: new Set<string>(),
   wrapup: false,
+  wrapupError: null as string | null,
   listeners: new Set<() => void>(),
   notify() {
     this.listeners.forEach((l) => l())
@@ -49,9 +51,18 @@ export function errorMessage(err: unknown): UiMessage {
   return { id: uid(), role: 'system', text, error: true }
 }
 
-export async function sendUserMessage(text: string, opts: { visibleText?: string } = {}): Promise<void> {
+// Sends are serialised: a message sent while a reply streams waits for it instead of being dropped.
+let inflight: Promise<void> = Promise.resolve()
+
+export function sendUserMessage(text: string, opts: { visibleText?: string } = {}): Promise<void> {
   const trimmed = text.trim()
-  if (!trimmed || busy.chatSending) return
+  if (!trimmed) return Promise.resolve()
+  const run = inflight.then(() => runTurn(trimmed, opts))
+  inflight = run.catch(() => undefined)
+  return run
+}
+
+async function runTurn(trimmed: string, opts: { visibleText?: string }): Promise<void> {
   const chat = activeChat()
   const chatId = chat.id
   busy.chatSending = true
@@ -61,7 +72,7 @@ export async function sendUserMessage(text: string, opts: { visibleText?: string
   const userMsg: Anthropic.MessageParam = { role: 'user', content: trimmed }
   updateChat(chatId, (c) => ({
     ...c,
-    title: c.api.length === 0 ? trimmed.slice(0, 48) : c.title,
+    title: c.api.length === 0 ? (opts.visibleText ?? trimmed).slice(0, 48) : c.title,
     api: [...c.api, userMsg],
   }))
 
@@ -73,6 +84,8 @@ export async function sendUserMessage(text: string, opts: { visibleText?: string
     }
     return currentAssistantId
   }
+  const dropEmptyBubbles = () =>
+    updateChat(chatId, (c) => ({ ...c, ui: { ...c.ui, messages: c.ui.messages.filter((m) => !(m.role === 'assistant' && m.text === '' && !m.recipeIds)) } }))
 
   try {
     const appended = await ai().chat([...activeChat().api], profileOf(getState().settings), {
@@ -88,16 +101,44 @@ export async function sendUserMessage(text: string, opts: { visibleText?: string
       },
     })
     updateChat(chatId, (c) => ({ ...c, api: [...c.api, ...appended] }))
-    // Drop an empty assistant bubble (e.g. only tool calls).
-    updateChat(chatId, (c) => ({ ...c, ui: { ...c.ui, messages: c.ui.messages.filter((m) => !(m.role === 'assistant' && m.text === '' && !m.recipeIds)) } }))
+    dropEmptyBubbles()
   } catch (err) {
-    // Keep the API history consistent: drop the user turn we could not complete.
-    updateChat(chatId, (c) => ({ ...c, api: c.api.length && c.api[c.api.length - 1] === userMsg ? c.api.slice(0, -1) : c.api }))
+    const partial = err instanceof AiError ? err.partial : undefined
+    if (partial && partial.length) {
+      // Completed tool rounds already changed the UI; keep their history so the model remembers them.
+      updateChat(chatId, (c) => ({ ...c, api: [...c.api, ...partial] }))
+    } else {
+      // Nothing happened: drop the user turn so history stays consistent.
+      updateChat(chatId, (c) => ({ ...c, api: c.api.length && c.api[c.api.length - 1] === userMsg ? c.api.slice(0, -1) : c.api }))
+    }
+    dropEmptyBubbles()
     pushUi(chatId, errorMessage(err))
   } finally {
     busy.chatSending = false
     busy.notify()
   }
+}
+
+/** Keep the model's id on the newest recipe; older recipes with the same id move aside so old cards keep rendering. */
+function reconcileRecipeIds(chat: Chat, incoming: Recipe[]): Chat {
+  let ui = chat.ui
+  for (const r of incoming) {
+    const old = ui.recipesById[r.id]
+    if (!old) continue
+    const moved = `${r.id}~${Date.now().toString(36)}`
+    const { [r.id]: _r, ...restRecipes } = ui.recipesById
+    const { [r.id]: oldJudge, ...restJudge } = ui.judgeById
+    const { [r.id]: oldFail, ...restFail } = ui.judgeFailed
+    ui = {
+      ...ui,
+      recipesById: { ...restRecipes, [moved]: { ...old, id: moved } },
+      judgeById: oldJudge ? { ...restJudge, [moved]: oldJudge } : restJudge,
+      judgeFailed: oldFail ? { ...restFail, [moved]: true } : restFail,
+      selectedIds: ui.selectedIds.map((id) => (id === r.id ? moved : id)),
+      messages: ui.messages.map((m) => (m.recipeIds ? { ...m, recipeIds: m.recipeIds.map((id) => (id === r.id ? moved : id)) } : m)),
+    }
+  }
+  return { ...chat, ui }
 }
 
 function handleTool(chatId: string, name: string, input: unknown): string {
@@ -106,15 +147,18 @@ function handleTool(chatId: string, name: string, input: unknown): string {
       const recipes = (input as { recipes: Recipe[] }).recipes
       const byId: Record<string, Recipe> = {}
       recipes.forEach((r) => (byId[r.id] = r))
-      updateChat(chatId, (c) => ({
-        ...c,
-        ui: {
-          ...c.ui,
-          recipesById: { ...c.ui.recipesById, ...byId },
-          selectedIds: [],
-          messages: [...c.ui.messages, { id: uid(), role: 'assistant', text: '', recipeIds: recipes.map((r) => r.id) }],
-        },
-      }))
+      updateChat(chatId, (c0) => {
+        const c = reconcileRecipeIds(c0, recipes)
+        return {
+          ...c,
+          ui: {
+            ...c.ui,
+            recipesById: { ...c.ui.recipesById, ...byId },
+            selectedIds: [],
+            messages: [...c.ui.messages, { id: uid(), role: 'assistant', text: '', recipeIds: recipes.map((r) => r.id) }],
+          },
+        }
+      })
       recipes.forEach((r) => void judgeRecipe(chatId, r))
       return 'Shown to the user as cards. Health assessments are computed by the app. The user can select cards to compare, or tap "Cook this".'
     }
@@ -126,8 +170,9 @@ function handleTool(chatId: string, name: string, input: unknown): string {
     case 'show_cooking': {
       const plan = input as CookPlan
       updateChat(chatId, (c) => {
-        const keepKey = c.ui.currentStepKey && plan.steps.some((s) => s.key === c.ui.currentStepKey) ? c.ui.currentStepKey : plan.steps[0]?.key
         const isUpdate = c.ui.cookPlan?.recipeId === plan.recipeId
+        const current = c.ui.currentStepKey
+        const keepKey = isUpdate && current && (current === '__wrapup' || plan.steps.some((s) => s.key === current)) ? current : plan.steps[0]?.key
         return {
           ...c,
           ui: {
@@ -139,8 +184,8 @@ function handleTool(chatId: string, name: string, input: unknown): string {
           },
         }
       })
-      setState({ view: 'cook' })
-      return 'Cooking view is open on the user\'s screen.'
+      if (getState().activeChatId === chatId) setState({ view: 'cook' })
+      return "Cooking view is open on the user's screen."
     }
     default:
       throw new Error(`Unknown tool ${name}`)
@@ -148,8 +193,9 @@ function handleTool(chatId: string, name: string, input: unknown): string {
 }
 
 export async function judgeRecipe(chatId: string, recipe: Recipe): Promise<void> {
-  if (busy.judging.has(recipe.id)) return
-  busy.judging.add(recipe.id)
+  const key = `${chatId}:${recipe.id}`
+  if (busy.judging.has(key)) return
+  busy.judging.add(key)
   busy.notify()
   updateChat(chatId, (c) => {
     const { [recipe.id]: _drop, ...rest } = c.ui.judgeFailed
@@ -157,13 +203,21 @@ export async function judgeRecipe(chatId: string, recipe: Recipe): Promise<void>
   })
   try {
     const j = await ai().judge(recipe, profileOf(getState().settings))
-    updateChat(chatId, (c) => ({ ...c, ui: { ...c.ui, judgeById: { ...c.ui.judgeById, [recipe.id]: j } } }))
+    updateChat(chatId, (c) => {
+      // The id may have been handed to a newer recipe meanwhile; only write if it is still ours.
+      if (c.ui.recipesById[recipe.id]?.title !== recipe.title) return c
+      return { ...c, ui: { ...c.ui, judgeById: { ...c.ui.judgeById, [recipe.id]: j } } }
+    })
   } catch {
     updateChat(chatId, (c) => ({ ...c, ui: { ...c.ui, judgeFailed: { ...c.ui.judgeFailed, [recipe.id]: true } } }))
   } finally {
-    busy.judging.delete(recipe.id)
+    busy.judging.delete(key)
     busy.notify()
   }
+}
+
+export function isJudging(chatId: string, recipeId: string): boolean {
+  return busy.judging.has(`${chatId}:${recipeId}`)
 }
 
 /** Re-fire judges for any recipe in the active chat that has no result (e.g. after a reload). */
@@ -180,10 +234,11 @@ export function toggleSelected(recipeId: string): void {
   updateChat(chat.id, (c) => ({ ...c, ui: { ...c.ui, selectedIds: sel } }))
 }
 
-export function healthiestId(chat: Chat, ids?: string[]): string | null {
-  const candidates = (ids ?? Object.keys(chat.ui.recipesById)).filter((id) => chat.ui.judgeById[id])
-  if (!candidates.length) return null
-  return candidates.reduce((best, id) => (chat.ui.judgeById[id].healthScore > chat.ui.judgeById[best].healthScore ? id : best))
+/** The healthiest among `ids`, only once every one of them has a judgement (never on partial data). */
+export function healthiestId(chat: Chat, ids: string[]): string | null {
+  const valid = ids.filter((id) => chat.ui.recipesById[id])
+  if (valid.length < 2 || !valid.every((id) => chat.ui.judgeById[id])) return null
+  return valid.reduce((best, id) => (chat.ui.judgeById[id].healthScore > chat.ui.judgeById[best].healthScore ? id : best))
 }
 
 export function cookRecipe(recipeId: string): Promise<void> {
@@ -191,7 +246,8 @@ export function cookRecipe(recipeId: string): Promise<void> {
   const r = chat.ui.recipesById[recipeId]
   if (!r) return Promise.resolve()
   setState({ view: 'chat' })
-  return sendUserMessage(`[User tapped "Cook this" on "${r.title}" (id ${r.id}), ${r.servings} servings.] Please open the cooking steps with show_cooking.`, {
+  const modelId = r.id.split('~')[0]
+  return sendUserMessage(`[User tapped "Cook this" on "${r.title}" (id ${modelId}), ${r.servings} servings.] Please open the cooking steps with show_cooking.`, {
     visibleText: `Let's make ${r.title}.`,
   })
 }
@@ -223,15 +279,17 @@ export function timerRemove(stepKey: string): void {
 
 export async function loadWrapup(): Promise<void> {
   const chat = activeChat()
-  if (!chat.ui.cookPlan || chat.ui.wrapup || busy.wrapup) return
+  const plan = chat.ui.cookPlan
+  if (!plan || chat.ui.wrapup || busy.wrapup) return
   busy.wrapup = true
+  busy.wrapupError = null
   busy.notify()
   try {
-    const plan = chat.ui.cookPlan
     const w: Wrapup = await ai().wrapup(plan, chat.ui.judgeById[plan.recipeId] ?? null, profileOf(getState().settings))
-    updateChat(chat.id, (c) => ({ ...c, ui: { ...c.ui, wrapup: w } }))
+    // Only keep it if the user is still cooking the same recipe.
+    updateChat(chat.id, (c) => (c.ui.cookPlan?.recipeId === plan.recipeId ? { ...c, ui: { ...c.ui, wrapup: w } } : c))
   } catch (err) {
-    pushUi(chat.id, errorMessage(err))
+    busy.wrapupError = err instanceof Error ? err.message : 'Could not load the wrap-up.'
   } finally {
     busy.wrapup = false
     busy.notify()
