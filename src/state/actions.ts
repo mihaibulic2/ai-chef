@@ -286,12 +286,46 @@ export function applySwap(swapId: string): Promise<void> {
   const chat = activeChat()
   const swap = chat.ui.cookPlan?.swaps?.find((sw) => sw.id === swapId)
   if (!swap || (chat.ui.swapsDone ?? []).includes(swapId)) return Promise.resolve()
-  updateChat(chat.id, (c) => ({ ...c, ui: { ...c.ui, swapsDone: [...(c.ui.swapsDone ?? []), swapId], mood: Math.min(1, c.ui.mood + 0.25) } }))
+  // The hack carries the mood to move to; the orb reacts now, before the model replies.
+  const target = Number.isFinite(swap.positivity) ? Math.max(0.2, Math.min(1, swap.positivity)) : Math.min(1, chat.ui.mood + 0.25)
+  updateChat(chat.id, (c) => ({
+    ...c,
+    ui: {
+      ...c.ui,
+      swapsDone: [...(c.ui.swapsDone ?? []), swapId],
+      swapMoodBefore: { ...(c.ui.swapMoodBefore ?? {}), [swapId]: c.ui.mood },
+      mood: Math.max(c.ui.mood, target),
+    },
+  }))
   celebrate('Healthier swap. Nice.')
   return sendUserMessage(`[Action] I made a healthier swap: ${swap.title}. ${swap.change}`, {
     visibleText: `Swapped: ${swap.title}`,
     kind: 'swap',
     tone: 'good',
+  })
+}
+
+/** The user undid a health hack: forget it, restore the mood from before it, and tell the chat quietly. */
+export function revertSwap(swapId: string): Promise<void> {
+  const chat = activeChat()
+  const swap = chat.ui.cookPlan?.swaps?.find((sw) => sw.id === swapId)
+  if (!swap || !(chat.ui.swapsDone ?? []).includes(swapId)) return Promise.resolve()
+  updateChat(chat.id, (c) => {
+    const { [swapId]: before, ...rest } = c.ui.swapMoodBefore ?? {}
+    return {
+      ...c,
+      ui: {
+        ...c.ui,
+        swapsDone: (c.ui.swapsDone ?? []).filter((id) => id !== swapId),
+        swapMoodBefore: rest,
+        mood: before ?? Math.max(0.2, c.ui.mood - 0.25),
+      },
+    }
+  })
+  return sendUserMessage(`[Action] I switched back from the health hack: ${swap.title}. Cooking it as written.`, {
+    visibleText: `Switched back: ${swap.title}`,
+    kind: 'swap',
+    tone: 'neutral',
   })
 }
 

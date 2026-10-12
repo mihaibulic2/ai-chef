@@ -1,15 +1,17 @@
 import type { Swap } from '../ai/types'
-import { applySwap } from '../state/actions'
+import { applySwap, revertSwap } from '../state/actions'
 
 /** A healthier substitution offered on the ingredients page ("Switch to this") or at its step ("I did this"). */
 export function SwapCard({ swap, done, mode }: { swap: Swap; done: boolean; mode: 'shop' | 'step' }) {
   return (
     <div className={`card swap${done ? ' done' : ''}`} data-testid={`swap-${swap.id}`}>
-      <div className="eyebrow">{done ? 'Health hack ✓' : 'Health hack'}</div>
+      <div className="eyebrow">{done ? 'Health hack · Swapped ✓' : 'Health hack'}</div>
       <div className="swap-title">{swap.title}</div>
       <div className="swap-change">{swap.change}</div>
       <div className="swap-payoff">{swap.payoff}</div>
-      {!done && (
+      {done ? (
+        <button className="btn small amber" onClick={() => void revertSwap(swap.id)} data-testid={`swap-revert-${swap.id}`}>Switch back</button>
+      ) : (
         <button className="btn small green" onClick={() => void applySwap(swap.id)} data-testid={`swap-apply-${swap.id}`}>
           {mode === 'shop' ? 'Switch to this' : 'I did this'}
         </button>

@@ -34,6 +34,8 @@ export interface ChatUi {
   timers: Timer[]
   /** Ids of swaps the user said they applied. */
   swapsDone?: string[]
+  /** Mood before each applied swap, so switching back can revert it. */
+  swapMoodBefore?: Record<string, number>
   wrapup?: Wrapup
 }
 

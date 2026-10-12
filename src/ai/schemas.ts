@@ -41,6 +41,7 @@ export const swapSchema = obj({
   change: { ...str, description: 'One or two sentences: exactly what to buy or do instead, with quantities' },
   stepKey: { ...nullable(str), description: 'The step key where this swap is applied, or null if it only changes shopping' },
   payoff: { ...str, description: 'One short line on the benefit, e.g. "about 180 fewer kcal per serving"' },
+  positivity: { ...num, description: 'Same scale as set_mood (0.2 to 1): the mood to move to if the user accepts this hack, higher than the current mood for the recipe as written.' },
 })
 
 export const cookPlanSchema = obj({

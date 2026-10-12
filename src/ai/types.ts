@@ -58,6 +58,8 @@ export interface Swap {
   stepKey: string | null
   /** One-line payoff, e.g. "about 180 fewer kcal per serving". */
   payoff: string
+  /** Same scale as set_mood: the mood to move to if the user accepts this hack. */
+  positivity: number
 }
 
 export interface CookPlan {

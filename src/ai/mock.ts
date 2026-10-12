@@ -119,7 +119,7 @@ export const MOCK_PLAN: CookPlan = {
     { key: 'toss', title: 'Toss and serve', instruction: 'Add the drained pasta, a splash of pasta water, and 2 tbsp parmesan. Toss and serve.', durationMin: null, tip: null },
   ],
   swaps: [
-    { id: 's1', title: 'Whole wheat spaghetti', change: 'Use 200 g whole wheat spaghetti instead of regular. Cook 1 minute longer.', stepKey: 'cook-pasta', payoff: 'about 6 g more fiber per serving' },
+    { id: 's1', title: 'Whole wheat spaghetti', change: 'Use 200 g whole wheat spaghetti instead of regular. Cook 1 minute longer.', stepKey: 'cook-pasta', payoff: 'about 6 g more fiber per serving', positivity: 0.95 },
   ],
 }
 
@@ -161,7 +161,11 @@ export class MockAiClient implements AiClient {
     }
 
     await wait(600)
-    if (lower.startsWith('[action]')) {
+    if (lower.startsWith('[action] i switched back')) {
+      const text = 'No problem.'
+      await say(text)
+      appended.push({ role: 'assistant', content: [{ type: 'text', text }] })
+    } else if (lower.startsWith('[action]')) {
       await callTool('set_mood', { positivity: 0.95 }, '')
       const text = 'Nice.'
       await say(text)
