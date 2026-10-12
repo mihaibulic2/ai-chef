@@ -184,9 +184,14 @@ export class MockAiClient implements AiClient {
     return j
   }
 
-  async pantryVision(_image: ImageInput): Promise<string[]> {
+  async pantryVision(_image: ImageInput, _currentPantry: string): Promise<string[]> {
     await wait(800)
-    return ['Barilla spaghetti 1 lb', 'Kerrygold salted butter 8 oz', 'yellow onions, 3', 'baby spinach, 5 oz bag']
+    return ['Tillamook sharp cheddar 8 oz', 'Roma tomatoes, 4', 'Bird\'s Eye frozen broccoli 12 oz']
+  }
+
+  async pantryMerge(items: string[], _currentPantry: string): Promise<string[]> {
+    await wait(500)
+    return [...new Set(items)]
   }
 
   async wrapup(): Promise<Wrapup> {

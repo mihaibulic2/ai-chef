@@ -90,7 +90,7 @@ export interface CallConfig {
   max_tokens: number
 }
 
-export type CallName = 'chat' | 'judge' | 'pantry_vision' | 'wrapup'
+export type CallName = 'chat' | 'judge' | 'pantry_vision' | 'pantry_merge' | 'wrapup'
 
 export interface ChatTurnHandlers {
   onText: (delta: string) => void

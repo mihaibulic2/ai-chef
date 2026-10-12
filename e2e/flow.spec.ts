@@ -236,14 +236,17 @@ test.describe('settings', () => {
     await expect(page.getByTestId(id!)).toHaveCount(0)
   })
 
-  test('Run checks ends with four ok checks in mock mode', async ({ page }) => {
+  test('saving the API key runs five checks that end ok in mock mode', async ({ page }) => {
     await fresh(page)
     await page.getByTestId('settings-btn').click()
-    await page.getByRole('button', { name: 'Run checks' }).click()
+    await page.getByTestId('tab-api').click()
+    await page.getByTestId('api-key').fill('sk-ant-test')
+    await page.getByTestId('save-key').click()
     const checks = page.getByTestId('checks')
     await expect(checks).toBeVisible()
     const rows = checks.locator('[data-check]')
-    await expect(rows).toHaveCount(4)
-    for (let i = 0; i < 4; i++) await expect(rows.nth(i)).toHaveAttribute('data-check', 'ok', { timeout: 15_000 })
+    await expect(rows).toHaveCount(5)
+    for (let i = 0; i < 5; i++) await expect(rows.nth(i)).toHaveAttribute('data-check', 'ok', { timeout: 15_000 })
+    await expect(page.getByText('Verified')).toBeVisible()
   })
 })

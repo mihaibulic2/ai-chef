@@ -5,10 +5,12 @@ import type { CallConfig, CallName, ChatTurnHandlers, CookPlan, ImageInput, Judg
 import chatConfig from './calls/chat/config.json'
 import judgeConfig from './calls/judge/config.json'
 import visionConfig from './calls/pantry_vision/config.json'
+import mergeConfig from './calls/pantry_merge/config.json'
 import wrapupConfig from './calls/wrapup/config.json'
 import chatPrompt from './calls/chat/prompt.md?raw'
 import judgePrompt from './calls/judge/prompt.md?raw'
 import visionPrompt from './calls/pantry_vision/prompt.md?raw'
+import mergePrompt from './calls/pantry_merge/prompt.md?raw'
 import wrapupPrompt from './calls/wrapup/prompt.md?raw'
 import { MockAiClient } from './mock'
 
@@ -16,6 +18,7 @@ export const CALLS: Record<CallName, { config: CallConfig; prompt: string }> = {
   chat: { config: chatConfig as CallConfig, prompt: chatPrompt },
   judge: { config: judgeConfig as CallConfig, prompt: judgePrompt },
   pantry_vision: { config: visionConfig as CallConfig, prompt: visionPrompt },
+  pantry_merge: { config: mergeConfig as CallConfig, prompt: mergePrompt },
   wrapup: { config: wrapupConfig as CallConfig, prompt: wrapupPrompt },
 }
 
@@ -25,7 +28,10 @@ export interface AiClient {
   /** Runs one assistant turn (including tool calls) and returns the messages to append to history. */
   chat(history: Anthropic.MessageParam[], profile: Profile, handlers: ChatTurnHandlers): Promise<Anthropic.MessageParam[]>
   judge(recipe: Recipe, profile: Profile): Promise<Judgement>
-  pantryVision(image: ImageInput): Promise<string[]>
+  /** Products visible in the photo that are not already in `currentPantry` (one per line). */
+  pantryVision(image: ImageInput, currentPantry: string): Promise<string[]>
+  /** Dedupe and clean a list of spotted products against the current pantry. */
+  pantryMerge(items: string[], currentPantry: string): Promise<string[]>
   wrapup(plan: CookPlan, judgement: Judgement | null, profile: Profile): Promise<Wrapup>
   /** Fires a tiny request with the real model/tools/schema but a throwaway prompt. Resolves on success. */
   check(call: CallName): Promise<void>
@@ -166,11 +172,16 @@ export class RealAiClient implements AiClient {
     return this.structured<Judgement>('judge', judgementSchema, content)
   }
 
-  async pantryVision(image: ImageInput): Promise<string[]> {
+  async pantryVision(image: ImageInput, currentPantry: string): Promise<string[]> {
     const out = await this.structured<{ products: string[] }>('pantry_vision', pantryVisionSchema, [
       { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.base64 } },
-      { type: 'text', text: 'List the food products in this photo.' },
+      { type: 'text', text: `Products already at home:\n${listOrNone(currentPantry)}\n\nList only the food products in this photo that are not already on that list.` },
     ])
+    return out.products
+  }
+
+  async pantryMerge(items: string[], currentPantry: string): Promise<string[]> {
+    const out = await this.structured<{ products: string[] }>('pantry_merge', pantryVisionSchema, `Spotted in photos:\n${listOrNone(items.join('\n'))}\n\nAlready at home:\n${listOrNone(currentPantry)}`)
     return out.products
   }
 
@@ -189,7 +200,7 @@ export class RealAiClient implements AiClient {
         await this.client.messages.create({ ...this.base('chat'), max_tokens: 500, system, tools: chatTools, messages: [{ role: 'user', content: user }] })
         return
       }
-      const schema = call === 'judge' ? judgementSchema : call === 'pantry_vision' ? pantryVisionSchema : wrapupSchema
+      const schema = call === 'judge' ? judgementSchema : call === 'pantry_vision' || call === 'pantry_merge' ? pantryVisionSchema : wrapupSchema
       await this.structured(call, schema, user, system)
     } catch (err) {
       throw toAiError(err)

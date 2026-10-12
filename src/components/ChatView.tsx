@@ -3,6 +3,7 @@ import { Orb, type OrbState } from './Orb'
 import { GearIcon, PlusIcon, SendIcon } from './Icons'
 import { RecipeCarousel } from './RecipeCarousel'
 import { useVoice } from './useVoice'
+import { isMockMode } from '../ai/client'
 import { busy, judgeMissing, sendUserMessage, startNewChat } from '../state/actions'
 import { activeChat, setState, useAppState } from '../state/store'
 import { useBusy } from './useBusy'
@@ -73,7 +74,7 @@ export function ChatView() {
         <h1>Chef</h1>
         <div className="actions">
           <button className="icon-btn" aria-label="New chat" onClick={startNewChat}><PlusIcon /></button>
-          <button className="icon-btn" aria-label="Settings" onClick={() => setState({ view: 'settings' })} data-testid="settings-btn"><GearIcon /></button>
+          <button className={`icon-btn${!s.settings.apiKeyVerified && !isMockMode() ? ' alert' : ''}`} aria-label="Settings" onClick={() => setState({ view: 'settings' })} data-testid="settings-btn"><GearIcon /></button>
         </div>
       </div>
       <div className="scroll chat-scroll" ref={listRef} onScroll={onScroll}>

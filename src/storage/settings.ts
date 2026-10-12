@@ -5,10 +5,13 @@ import type { Profile } from '../ai/types'
 
 export interface Settings extends Profile {
   apiKey: string
+  /** True once the saved key passed the AI checks. Reset whenever the key changes. */
+  apiKeyVerified: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   apiKey: '',
+  apiKeyVerified: false,
   pantryText: DEFAULT_PANTRY,
   watchlistText: DEFAULT_WATCHLIST,
   allergensText: DEFAULT_ALLERGENS,
@@ -26,7 +29,7 @@ export function loadSettings(): Settings {
   const merged: Settings = { ...DEFAULT_SETTINGS }
   for (const k of Object.keys(DEFAULT_SETTINGS) as (keyof Settings)[]) {
     const v = stored[k]
-    if (typeof v === 'string') merged[k] = v
+    if (typeof v === typeof DEFAULT_SETTINGS[k]) (merged as unknown as Record<string, unknown>)[k] = v
   }
   if (merged.pantryText.trim() === OLD_PANTRY_PLACEHOLDER) merged.pantryText = DEFAULT_SETTINGS.pantryText
   return merged
@@ -40,3 +43,6 @@ export function profileOf(s: Settings): Profile {
   const { pantryText, watchlistText, allergensText, concernsText, aboutMe } = s
   return { pantryText, watchlistText, allergensText, concernsText, aboutMe }
 }
+
+/** Non-key fields the Save button on the text tabs compares. */
+export const TEXT_FIELDS: (keyof Profile)[] = ['pantryText', 'watchlistText', 'allergensText', 'concernsText', 'aboutMe']
